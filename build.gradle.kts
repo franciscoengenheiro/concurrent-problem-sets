@@ -18,7 +18,9 @@ dependencies {
     implementation("org.slf4j:slf4j-api:1.7.36")
     implementation("org.slf4j:slf4j-simple:2.0.0-alpha7")
 
+    // Kotlin test framework
     testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
 
     ktlint("com.pinterest:ktlint:0.48.2") {
         attributes {

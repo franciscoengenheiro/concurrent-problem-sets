@@ -1,4 +1,4 @@
-package util
+package pt.isel.pc.problemsets.util
 
 class NodeLinkedList<T> {
 
