@@ -61,7 +61,8 @@ class NAryExchanger<T>(private val groupSize: Int) {
                         Thread.currentThread().interrupt()
                         return localRequest.values.toList()
                     }
-                    // Giving-up by interruption
+                    // Giving-up by interruption, remove value from the group
+                    localRequest.values.remove(value)
                     throw e
                 }
                 // The current thread woke up and checks if the group has been completed

@@ -6,7 +6,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.slf4j.LoggerFactory
-import pt.isel.pc.problemsets.utils.TestHelper
+import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.spinUntilTimedWait
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.stream.Stream
@@ -21,7 +21,7 @@ class SemaphoreTests {
     @Test
     fun `interrupt test`() {
         val sem = NArySemaphoreUsingFifoAndKernelStyle(3)
-        val testHelper = TestHelper(10.seconds)
+        val testHelper = MultiThreadTestHelper(10.seconds)
         val th1 = testHelper.thread {
             assertThrows<InterruptedException> { sem.acquire(4, INFINITE) }
         }
@@ -41,19 +41,19 @@ class SemaphoreTests {
     fun `timeout test`() {
         val initialUnits = 5
         val sem = NArySemaphoreUsingFifoAndKernelStyle(initialUnits)
-        val testHelper = TestHelper(10.seconds)
+        val multiThreadTestHelper = MultiThreadTestHelper(10.seconds)
         (initialUnits + 1 downTo 1).forEach {
             val timeout = it.seconds
             logger.info("starting thread requesting {} units with {} timeout", it, timeout)
-            val th = testHelper.thread {
+            val th = multiThreadTestHelper.thread {
                 assertFalse { sem.acquire(it, timeout) }
             }
             spinUntilTimedWait(th)
         }
-        testHelper.thread {
+        multiThreadTestHelper.thread {
             assertTrue { sem.acquire(initialUnits, INFINITE) }
         }
-        testHelper.join()
+        multiThreadTestHelper.join()
     }
 
     @ParameterizedTest(name = "{index} - {0}")
@@ -64,8 +64,8 @@ class SemaphoreTests {
         release: () -> Unit
     ) {
         val units = AtomicInteger(INITIAL_UNITS)
-        val testHelper = TestHelper(2.seconds)
-        testHelper.createAndStartMultiple(N_OF_THREADS) { _, isDone ->
+        val multiThreadTestHelper = MultiThreadTestHelper(2.seconds)
+        multiThreadTestHelper.createAndStartMultipleThreads(N_OF_THREADS) { _, isDone ->
             while (!isDone()) {
                 acquire()
                 val observedUnits = units.decrementAndGet()
@@ -74,7 +74,7 @@ class SemaphoreTests {
                 release()
             }
         }
-        testHelper.join()
+        multiThreadTestHelper.join()
     }
 
     @ParameterizedTest(name = "{index} - {0}")
@@ -85,8 +85,8 @@ class SemaphoreTests {
         release: (Int) -> Unit
     ) {
         val units = AtomicInteger(INITIAL_UNITS)
-        val testHelper = TestHelper(5.seconds)
-        testHelper.createAndStartMultiple(N_OF_THREADS) { _, isDone ->
+        val multiThreadTestHelper = MultiThreadTestHelper(5.seconds)
+        multiThreadTestHelper.createAndStartMultipleThreads(N_OF_THREADS) { _, isDone ->
             val random = Random.Default
             while (!isDone()) {
                 val unitsToAcquire = random.nextInt(1, INITIAL_UNITS + 1)
@@ -97,7 +97,7 @@ class SemaphoreTests {
                 release(unitsToAcquire)
             }
         }
-        testHelper.join()
+        multiThreadTestHelper.join()
     }
 
     companion object {
