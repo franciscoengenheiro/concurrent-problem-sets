@@ -22,11 +22,11 @@ class SemaphoreTests {
     fun `interrupt test`() {
         val sem = NArySemaphoreUsingFifoAndKernelStyle(3)
         val testHelper = MultiThreadTestHelper(10.seconds)
-        val th1 = testHelper.thread {
+        val th1 = testHelper.createAndStartThread {
             assertThrows<InterruptedException> { sem.acquire(4, INFINITE) }
         }
         spinUntilTimedWait(th1)
-        val th2 = testHelper.thread {
+        val th2 = testHelper.createAndStartThread {
             assertTrue(sem.acquire(3, INFINITE))
         }
         spinUntilTimedWait(th1)
@@ -45,12 +45,12 @@ class SemaphoreTests {
         (initialUnits + 1 downTo 1).forEach {
             val timeout = it.seconds
             logger.info("starting thread requesting {} units with {} timeout", it, timeout)
-            val th = multiThreadTestHelper.thread {
+            val th = multiThreadTestHelper.createAndStartThread {
                 assertFalse { sem.acquire(it, timeout) }
             }
             spinUntilTimedWait(th)
         }
-        multiThreadTestHelper.thread {
+        multiThreadTestHelper.createAndStartThread {
             assertTrue { sem.acquire(initialUnits, INFINITE) }
         }
         multiThreadTestHelper.join()

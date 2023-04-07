@@ -1,1 +1,0 @@
-_Package_ para as classes da primeira série de exercícios.

@@ -53,7 +53,7 @@ class MultiThreadTestHelper(
      * See [join].
      * @param block the code to be executed by the thread.
      */
-    fun thread(block: () -> Unit): Thread {
+    fun createAndStartThread(block: () -> Unit): Thread {
         val th = Thread {
             try {
                 block()
@@ -83,8 +83,8 @@ class MultiThreadTestHelper(
 
     /**
      * Waits for all created threads to end.
-     * @throws AssertionError if any of the threads throws an assertion error
-     * @throws Exception if any of the threads throws an exception
+     * @throws AssertionError if any of the threads throws an assertion error.
+     * @throws Exception if any of the threads throws an exception.
      */
     @Throws(InterruptedException::class)
     fun join() {
