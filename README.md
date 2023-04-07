@@ -1,8 +1,8 @@
 # Concurrent Programming - Summer 22/23
 
-> This document contains the relevant observations and technical documentation of the problem sets resolution
+> This document contains the relevant observations and technical documentation of the problem sets resolution.
 
-> Author: `49429 - Francisco Engenheiro - LEIC41D`
+> Student: `49428 - Francisco Engenheiro - LEIC41D`
 
 ## Table of Contents
 
@@ -19,11 +19,13 @@ A group is completed if the number of threads required to complete the group equ
 
 In the following image, an example can be seen of such iteraction between the exchanger and a set of threads.
 
+
 <style>
   .center {
     text-align: center;
   }
 </style>
+
 
 <div class="center">
 
