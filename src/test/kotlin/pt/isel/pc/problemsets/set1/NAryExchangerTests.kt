@@ -12,7 +12,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -121,7 +120,7 @@ class NAryExchangerTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         val exchanger: NAryExchanger<String> = NAryExchanger(groupSize)
         val th1 = testHelper.createAndStartThread {
-            val result = exchanger.exchange("value", ZERO)
+            val result = exchanger.exchange("value", Duration.ZERO)
             assertNull(result)
         }
         testHelper.join()

@@ -5,23 +5,43 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration
 
+/**
+ * A blocking exchange syncronization mechanism that allows [groupSize] threads to exchange values.
+ * The threads that call [exchange] will block until the group is completed by another thread.
+ * When the group is completed, all threads that called [exchange] will resume their work with
+ * the values retrieved from the other threads, including the value brought by them.
+ * @param T the type of the values that will be exchanged.
+ * @param groupSize the number of threads that will exchange values.
+ * @throws IllegalArgumentException if [groupSize] is less than 2. Once created, the size cannot be changed.
+ */
 class NAryExchanger<T>(private val groupSize: Int) {
     init {
         require(groupSize >= 2) { "Group size cannot be less than 2" }
     }
 
+    private val lock = ReentrantLock()
+
+    // Each request represents a group of threads that are requesting to exchange values
     private class Request<T>(
         val condition: Condition,
         val values: MutableList<T> = mutableListOf(),
         var isGroupCompleted: Boolean = false
     )
 
-    private val lock = ReentrantLock()
-
     // Internal state
     private var currentRequest = Request<T>(condition = lock.newCondition())
     private var elementsAlreadyInGroup = 0
 
+    /**
+     * Allows one thread to exchange values with other threads inside a group.
+     * @param value the value that will be exchanged with the values brought by the other threads inside a group.
+     * @param timeout the maximum time that this thread is willing to wait for the group to be completed.
+     * @return a list of values brought by all threads inside the group where this thread was inserted, including
+     * the value brought by this it or null if the deadline is reached.
+     * @throws InterruptedException if the current thread is interrupted while waiting for the group to be completed.
+     * Note that if the current thread is interrupted but the group was completed by another thread, the current thread
+     * will return as expected and not throw [InterruptedException] unless it's blocked again.
+     */
     @Throws(InterruptedException::class)
     fun exchange(value: T, timeout: Duration): List<T>? {
         lock.withLock {
@@ -34,21 +54,17 @@ class NAryExchanger<T>(private val groupSize: Int) {
                 // that this condition is now true
                 currentRequest.isGroupCompleted = true
                 currentRequest.condition.signalAll()
-                // Register the value brought by this thread
                 currentRequest.values.add(value)
                 val values = currentRequest.values.toList()
                 // Create a new group request for the upcoming threads
                 currentRequest = Request(lock.newCondition())
-                // Reset the number of elements in the group
                 elementsAlreadyInGroup = 0
                 return values.toList()
             }
-            println("${Thread.currentThread().name} joined the group")
             // Wait-path -> The current thread joins the group but does not complete it and
             // thus awais until that condition is true
             elementsAlreadyInGroup++
             var remainingNanos: Long = timeout.inWholeNanoseconds
-            // Register the value brought by this thread
             currentRequest.values.add(value)
             val localRequest = currentRequest
             while (true) {
@@ -57,17 +73,12 @@ class NAryExchanger<T>(private val groupSize: Int) {
                     remainingNanos = localRequest.condition.awaitNanos(remainingNanos)
                 } catch (e: InterruptedException) {
                     if (localRequest.isGroupCompleted) {
-                        println(
-                            "${Thread.currentThread().name} was interrupted " +
-                                "but cannot giveup since the group was completed"
-                        )
                         // Arm the interrupt flag in order to not lose the interruption request
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
                         // This thread cannot giveup since the group was completed
                         return localRequest.values.toList()
                     }
-                    println("${Thread.currentThread().name} was interrupted and gave up")
                     // Giving-up by interruption, remove value from the group
                     localRequest.values.remove(value)
                     elementsAlreadyInGroup--

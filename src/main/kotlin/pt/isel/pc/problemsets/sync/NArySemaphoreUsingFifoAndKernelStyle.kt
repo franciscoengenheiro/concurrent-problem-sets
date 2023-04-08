@@ -10,7 +10,7 @@ import kotlin.time.Duration
  * Semaphore with acquisition and release of more than one unit, using kernel-style.
  */
 class NArySemaphoreUsingFifoAndKernelStyle(
-    initialUnits: Int,
+    initialUnits: Int
 ) {
     init {
         require(initialUnits > 0) { "Number of initial units must be greater than zero" }
@@ -19,7 +19,7 @@ class NArySemaphoreUsingFifoAndKernelStyle(
     private class Request(
         val requestedUnits: Int,
         val condition: Condition,
-        var isDone: Boolean = false,
+        var isDone: Boolean = false
     )
 
     private var availableUnits = initialUnits
