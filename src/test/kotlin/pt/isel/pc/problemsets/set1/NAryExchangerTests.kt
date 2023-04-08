@@ -2,6 +2,7 @@ package pt.isel.pc.problemsets.set1
 
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.spinUntilTimedWait
 import java.util.concurrent.ConcurrentHashMap
@@ -13,17 +14,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-
-/**
- * A class that caracterizes a value given by a [Thread] to an exchange group.
- * @param threadId the id of the thread that gave the value.
- * @param repetionId the id of the repetion iteration where the thread gave the value.
- */
-private data class ExchangedValue(val threadId: Int, val repetionId: Int) {
-    companion object {
-        val Empty = ExchangedValue(-1, -1)
-    }
-}
 
 class NAryExchangerTests {
 

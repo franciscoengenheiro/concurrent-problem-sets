@@ -1,0 +1,345 @@
+package pt.isel.pc.problemsets.set1
+
+import org.junit.jupiter.api.Test
+import pt.isel.pc.problemsets.utils.ExchangedValue
+import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
+import pt.isel.pc.problemsets.utils.isInFifoOrder
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.locks.Lock
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+
+class BlockingMessageQueueTests {
+
+    private val defaultMsg = "message"
+    private fun randomNumber(capacity: Int) = (1..capacity).random()
+    // tests without concurrency stress:
+    @Test
+    fun `Queue should let a consumer thread retrieve a value gave by a producer thread`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        testHelper.createAndStartThread {
+            val couldEnqueue = queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+            assertTrue(couldEnqueue)
+        }
+        Thread.sleep(1000)
+        testHelper.createAndStartThread {
+            val result = queue.tryDequeue(capacity, Duration.INFINITE)
+            assertNotNull(result)
+            assertEquals(capacity, result.size)
+            assertEquals(defaultMsg, result.first())
+        }
+        testHelper.join()
+    }
+
+    @Test
+    fun `Queue should let a consumer thread retrieve all values gave by a producer thread in FIFO order`() {
+        val capacity = 10
+        val queue = BlockingMessageQueue<String>(capacity)
+        val messageList = List(capacity) { "$defaultMsg-$it" }
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        val mainTh = Thread.currentThread()
+        // Add two elements to the queue
+        testHelper.createAndStartThread {
+            repeat(capacity) {
+                val couldEnqueue = queue.tryEnqueue(messageList[it], Duration.INFINITE)
+                assertTrue(couldEnqueue)
+            }
+        }
+        Thread.sleep(1000)
+        testHelper.createAndStartThread {
+            val result = queue.tryDequeue(capacity, Duration.INFINITE)
+            assertNotNull(result)
+            assertEquals(capacity, result.size)
+            assertEquals(messageList, result)
+        }
+        testHelper.join()
+    }
+
+    @Test
+    fun `Queue should only operate with a capacity greater than zero`() {
+        assertFailsWith<IllegalArgumentException> {
+            BlockingMessageQueue<String>(0)
+        }
+    }
+
+    // Producer threads related tests
+    @Test
+    fun `Producer thread should be blocked trying to enqueue a message in a full queue`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        // This test could not be generic (for any capacity) since having control of the producer thread
+        // which is the "last" one to start is required
+        val pth1 = testHelper.createAndStartThread {
+            queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+        }
+        val pth2 = testHelper.createAndStartThread {
+            queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+        }
+        // Wait for the producer threads to start
+        Thread.sleep(1000)
+        assertEquals(Thread.State.TERMINATED, pth1.state)
+        assertEquals(Thread.State.TIMED_WAITING, pth2.state)
+    }
+
+    @Test
+    fun `Producer thread should return false when timeout expires`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        // This test could not be generic (for any capacity) since having control of the producer thread,
+        // which is the "last" one to start, is required
+        testHelper.createAndStartThread {
+            val couldEnqueue = queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+            assertTrue(couldEnqueue)
+        }
+        // The Queue is full, so the producer thread should time out
+        testHelper.createAndStartThread {
+            val couldEnqueue = queue.tryEnqueue(defaultMsg, Duration.ZERO)
+            assertFalse(couldEnqueue)
+        }
+        testHelper.join()
+    }
+
+    @Test
+    fun `Producer thread should throw InterruptedException if interruption occurs and could not dequeue in time`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        // This test could not be generic (for any capacity) since having control of the producer thread,
+        // which is the "last" one to start, is required
+        val pth1 = testHelper.createAndStartThread {
+            val couldEnqueue = queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+            assertTrue(couldEnqueue)
+        }
+        // The Queue is full, so the producer thread should time out
+        val pth2 = testHelper.createAndStartThread {
+            assertFailsWith<InterruptedException> {
+                queue.tryEnqueue(defaultMsg, Duration.INFINITE)
+            }
+        }
+        Thread.sleep(1000)
+        pth2.interrupt()
+        testHelper.join()
+    }
+
+    // Consumer threads related tests
+    @Test
+    fun `Consumer thread should be blocked trying to retrieve a message from an empty queue`() {
+        val capacity = 10
+        val queue = BlockingMessageQueue<String>(capacity)
+        val cth = Thread {
+            queue.tryDequeue(1, Duration.INFINITE)
+        }
+        cth.start()
+        // Wait for the consumer thread to start
+        Thread.sleep(1000)
+        assertEquals(Thread.State.TIMED_WAITING, cth.state)
+    }
+
+    @Test
+    fun `Consumer thread should return null when timeout expires`() {
+        val capacity = 10
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        testHelper.createAndStartThread {
+            val result = queue.tryDequeue(1, Duration.ZERO)
+            assertNull(result)
+        }
+        testHelper.join()
+    }
+
+    @Test
+    fun `Consumer thread should throw InterruptedException if interruption occurs and could not dequeue in time`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        val cth1 = testHelper.createAndStartThread {
+            assertFailsWith<InterruptedException> {
+                queue.tryDequeue(capacity, Duration.INFINITE)
+            }
+        }
+        Thread.sleep(1000)
+        cth1.interrupt()
+        testHelper.join()
+    }
+
+    // Tests with concurrency stress:
+    @Test
+    fun `An arbitrary number of producer and consumer threads should be able to exchange messages`() {
+        val capacity = 10
+        val queue = BlockingMessageQueue<ExchangedValue>(capacity)
+        val nOfThreads = 24
+        val timeout = 2.seconds
+        val lock: Lock = ReentrantLock()
+        val testHelper = MultiThreadTestHelper(5.seconds)
+        // Sets
+        val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
+        val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val failedExchangedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
+            // This counter does not need to be thread safe since each thread will have its own counter
+            var counter = 0
+            while (!willingToWaitTimeout()) {
+                val repetionId = counter
+                val value = ExchangedValue(threadId, repetionId)
+                originalMsgs.add(value)
+                val couldEnqueue = queue.tryEnqueue(value, timeout)
+                if (couldEnqueue) {
+                    // Use the lock to avoid check-then-act
+                    lock.withLock {
+                        if (exchangedMsgs.putIfAbsent(value, Unit) != null)
+                            throw AssertionError(
+                                "The value $value has already been exchanged by another producer thread")
+                    }
+                } else {
+                    // The message was not delivered to the queue because the timeout expired, and this is
+                    // the only cause for this to happen, as no producer thread was interrupted in this test
+                    failedExchangedMsgs.add(value)
+                }
+                counter++
+            }
+        }
+        testHelper.createAndStartMultipleThreads(nOfThreads) { _, willingToWaitTimeout ->
+            while (!willingToWaitTimeout()) {
+                val result= queue.tryDequeue(randomNumber(capacity), timeout)
+                if (result != null) lock.withLock { retrievedMsgs.addAll(result) }
+            }
+        }
+        // Wait for all threads to finish
+        testHelper.join()
+        // Check if failedExchangedMsgs does not intersect with exchangedMsgs
+        val intersection = failedExchangedMsgs.intersect(exchangedMsgs.keys)
+        assertTrue(intersection.isEmpty())
+        // Check if retrievedMsgs is equal to exchangedMsgs
+        assertEquals(retrievedMsgs.size, exchangedMsgs.size)
+        // Check if failedExchangedMsgs union with exchangedMsgs is equal to originalMsgs
+        val allExchangedMsgs = failedExchangedMsgs.union(exchangedMsgs.keys)
+        assertEquals(originalMsgs.size, allExchangedMsgs.size)
+    }
+
+    @Test
+    fun `Check if FIFO order is preserved when multiple producer and consumer threads exchange messages`() {
+        val capacity = 100
+        val queue = BlockingMessageQueue<ExchangedValue>(capacity)
+        val nOfThreads = 24
+        val timeout = 2.seconds
+        val lock: Lock = ReentrantLock()
+        val testHelper = MultiThreadTestHelper(5.seconds)
+        // Sets
+        val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
+        val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
+            // This counter does not need to be thread safe since each thread will have its own counter
+            var counter = 0
+            while (!willingToWaitTimeout()) {
+                val repetionId = counter
+                val value = ExchangedValue(threadId, repetionId)
+                val couldEnqueue = queue.tryEnqueue(value, timeout)
+                if (couldEnqueue) {
+                    // Use the lock to avoid check-then-act
+                    lock.withLock {
+                        if (exchangedMsgs.putIfAbsent(value, Unit) != null)
+                            throw AssertionError(
+                                "The value $value has already been exchanged by another producer thread")
+                    }
+                }
+                counter++
+            }
+        }
+        testHelper.createAndStartMultipleThreads(nOfThreads) { _, willingToWaitTimeout ->
+            while (!willingToWaitTimeout()) {
+                val result= queue.tryDequeue(randomNumber(capacity), timeout)
+                if (result != null) lock.withLock { retrievedMsgs.addAll(result) }
+            }
+        }
+        // Wait for all threads to finish
+        testHelper.join()
+        // Check if FIFO order is preserved when multiple producer threads try to exchange messages
+        val exchangedMsgsMap = exchangedMsgs.keys.groupBy({it.threadId}, {it.repetionId})
+        println(exchangedMsgsMap)
+        assertTrue(isInFifoOrder(exchangedMsgsMap))
+        // Check if FIFO order is preserved when multiple consumer threads try to retrieve messages
+        val retrievedMsgsMap = retrievedMsgs.groupBy({it.threadId}, {it.repetionId})
+        assertTrue(isInFifoOrder(retrievedMsgsMap))
+    }
+
+    @Test
+    fun `Check if an arbitrary number of consumer threads is timedout`() {
+        val capacity = 1000
+        val queue = BlockingMessageQueue<ExchangedValue>(capacity)
+        val nOfProducerThreads = 24
+        val nOfConsumerThreads = 10
+        val lock: Lock = ReentrantLock()
+        val producerTimeout = 1.seconds
+        val consumerTimeout = producerTimeout / 5
+        val testHelper = MultiThreadTestHelper(5.seconds)
+        // Sets
+        val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
+        val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val failedExchangedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val consumerThreadsTimedout = ConcurrentLinkedQueue<Int>()
+        // Create producer threads
+        testHelper.createAndStartMultipleThreads(nOfProducerThreads) { threadId, willingToWaitTimeout ->
+            // This counter does not need to be thread safe since each thread will have its own counter
+            var counter = 0
+            while (!willingToWaitTimeout()) {
+                val repetionId = counter
+                val value = ExchangedValue(threadId, repetionId)
+                originalMsgs.add(value)
+                val couldEnqueue = queue.tryEnqueue(value, producerTimeout)
+                if (couldEnqueue) {
+                    // Use the lock to avoid check-then-act
+                    lock.withLock {
+                        if (exchangedMsgs.putIfAbsent(value, Unit) != null)
+                            throw AssertionError(
+                                "The value $value has already been exchanged by another producer thread")
+                    }
+                } else {
+                    // The message was not delivered to the queue because the timeout expired, and this is
+                    // the only cause for this to happen, as no producer thread was interrupted in this test
+                    failedExchangedMsgs.add(value)
+                }
+                counter++
+            }
+        }
+        // Create consumer threads with smaller timeout
+        testHelper.createAndStartMultipleThreads(nOfConsumerThreads) { threadId, willingToWaitTimeout ->
+            while (!willingToWaitTimeout()) {
+                val result = queue.tryDequeue(randomNumber(capacity), consumerTimeout)
+                if (result != null) {
+                    lock.withLock { retrievedMsgs.addAll(result) }
+                } else {
+                    // The message was not retrieved from the queue because the timeout expired and this is
+                    // the only cause for this to happen, as no consumer thread was interrupted in this test
+                    consumerThreadsTimedout.add(threadId)
+                }
+            }
+        }
+        // Wait for all threads to finish
+        testHelper.join()
+        // Check if failedExchangedMsgs does not intersect with exchangedMsgs
+        val intersection = failedExchangedMsgs.intersect(exchangedMsgs.keys)
+        assertTrue(intersection.isEmpty())
+        // Check if retrievedMsgs is equal to exchangedMsgs
+        assertEquals(retrievedMsgs.size, exchangedMsgs.size)
+        // Check if failedExchangedMsgs union with exchangedMsgs is equal to originalMsgs
+        val allExchangedMsgs = failedExchangedMsgs.union(exchangedMsgs.keys)
+        assertEquals(originalMsgs.size, allExchangedMsgs.size)
+        // Check if consumer threads timed out
+        assertTrue(consumerThreadsTimedout.isNotEmpty())
+    }
+}

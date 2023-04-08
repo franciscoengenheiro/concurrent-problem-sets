@@ -5,10 +5,16 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * Type alias for a test function that receives an index and a function to check if the test is done.
+ */
 typealias TestFunction = (Int, () -> Boolean) -> Unit
 
 /**
- * Helper class to test multithreaded code.
+ * Helper class to test multithreaded code by providing a way to create and start multiple threads and join them.
+ * Any assertion error or exception thrown by the threads is captured and rethrown by the [join] method.
+ * All methods of this class should only be called in the main test thread,
+ * since the internal thread list is not thread safe.
  * @param duration the maximum duration of the test.
  */
 class MultiThreadTestHelper(
@@ -17,7 +23,7 @@ class MultiThreadTestHelper(
 
     private val deadline = Instant.now().plusMillis(duration.inWholeMilliseconds)
     private val failures = ConcurrentLinkedQueue<AssertionError>()
-    private val exceptions = ConcurrentLinkedQueue<Exception>()
+    private val errors = ConcurrentLinkedQueue<Exception>()
     private val threads = ConcurrentLinkedQueue<Thread>()
 
     private fun isDone() = Instant.now().isAfter(deadline)
@@ -39,7 +45,7 @@ class MultiThreadTestHelper(
             } catch (e: AssertionError) {
                 failures.add(e)
             } catch (e: Exception) {
-                exceptions.add(e)
+                errors.add(e)
             }
         }
         th.start()
@@ -62,7 +68,7 @@ class MultiThreadTestHelper(
             } catch (e: AssertionError) {
                 failures.add(e)
             } catch (e: Exception) {
-                exceptions.add(e)
+                errors.add(e)
             }
         }
         th.start()
@@ -71,7 +77,7 @@ class MultiThreadTestHelper(
     }
 
     /**
-     * Creates and starts multiple threads while capturing any assertion error or exception thrown by them.
+     * Creates and starts multiple threads while capturing any assertion error or exceptions thrown by them.
      * The interruption of the threads is ignored if it occurs.
      * It also registers the threads so that they can be joined later.
      * See [join].
@@ -99,8 +105,8 @@ class MultiThreadTestHelper(
         if (!failures.isEmpty()) {
             throw failures.peek()
         }
-        if (!exceptions.isEmpty()) {
-            throw exceptions.peek()
+        if (!errors.isEmpty()) {
+            throw errors.peek()
         }
     }
 }

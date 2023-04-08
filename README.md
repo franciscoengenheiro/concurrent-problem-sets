@@ -11,21 +11,24 @@
 
 ## Set1
 ### NaryExchanger
-This exchanger implementation is similar to the [Java Exchanger](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/Exchanger.html), but it allows to exchange generic values between an arbitrary group of threads instead of just two. It also allows for each thread to specify a willing-to-wait timeout for the exchange operation to complete.
+This exchanger implementation is similar to the [Java Exchanger](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/Exchanger.html), but it allows to exchange generic values between 
+an arbitrary group of threads instead of just two. It also allows for each thread to specify a willing-to-wait 
+timeout for the exchange operation to complete.
 
-The exchanger is able to create another group when the previous group was completed, and even if all the threads associated with the old group don't know yet, the group was completed. 
+The exchanger is able to create multiple groups of threads with the same specified size upon creation,
+and each thread can only exchange values with the threads of its group.
 
 A group is completed if the number of threads required to complete the group equals the specified group size.
 
 In the following image, an example can be seen of such iteraction between the exchanger and a set of threads.
 
-<center>
+<div style="text-align: center;">
 
 | ![NAryExchanger](src/main/resources/NAryExchanger.png) |
 |:------------------------------------------------------:|
 |                *NAryExchanger example*                 |
 
-</center>
+</div>
 
 Public Interface:
 ```kotlin
@@ -36,9 +39,13 @@ class NAryExchanger<T>(groupSize: Int) {
 ```
 
 Style of syncronization: 
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which represents a group in this context.
-- Since the thread that completes the group is the one that signals the other threads that such condition is now true, thus completing their request, a delegation of execution was used, and as such, the other threads in the group aren't required to alter the state of the `Exchanger` or their own state when they return from the *await*.
+- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
+represents a group in this context.
+- Since the thread that completes the group is the one that signals the other threads that such condition is now true, 
+thus completing their request, a delegation of execution was used, and as such, the other threads in the group aren't 
+required to alter the state of the `Exchanger` or their own state when they return from *await*.
 - The described `Request` is defined as follows:
+
     ```kotlin
     private class Request<T>(
         val condition: Condition,
@@ -61,11 +68,23 @@ Conditions of execution:
         - the group wasn't completed, and as such, the thread gives up, by removing the value it gave to the exchanged group, and throws an `InterruptedException`.
 
 ### BlockingMessageQueue
-This syncronizer is a blocking queue that allows for multiple threads to concurrently enqueue and dequeue messages. It also allows for each thread to specify a willing-to-wait timeout for the enqueue and dequeue operations to complete.
+This syncronizer is a blocking queue,
+similar to an [ArrayBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ArrayBlockingQueue.html)
+that allows for multiple threads to concurrently enqueue and dequeue messages.
+It also allows for each thread to specify a willing-to-wait timeout for the enqueue and dequeue operations to complete.
 
-In the following image, an example can be seen of such iteraction between the queue and a set of threads.
+The term *blocking* refers to the fact that the queue is bounded,
+and as such, if a thread tries to enqueue a message when the queue is full,
+or tries to dequeue a message when the queue is empty,
+it will block until the queue is not full or not empty, respectively.
 
-<div align="center">
+This type of syncronizer is useful when dealing in scenarios with multiple producers and consumer threads,
+and as such, it is important to ensure that the messages are enqueued and dequeued in the same order they were called,
+because of that the queue was implemented using FIFO (*First In First Out*) ordering.
+
+In the following image, an example can be seen of such iteraction between the blocking queue and a set of producer and consumer threads.
+
+<div style="text-align: center;">
 
 | ![BlockingMessageQueue](src/main/resources/BlockingMessageQueue.png) |
 |:--------------------------------------------------------------------:|
@@ -86,6 +105,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
 Style of syncronization:
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, which one representing a different condition:
   - `ProducerRequest` - represents a request to enqueue a message.
+  
     ```kotlin
     private class ProducerRequest<T>(
         val message: T,
@@ -94,6 +114,7 @@ Style of syncronization:
     )
     ```
   - `ConsumerRequest` - represents a request to dequeue a set of messages.
+  
     ```kotlin
     private class ConsumerRequest<T>(
         val nOfMessages: Int,
@@ -102,6 +123,10 @@ Style of syncronization:
         var canDequeue: Boolean = false
     )
     ```
+- The delegation is used in the sense where the consumer thread that dequeues the messages is the one that signals a producer
+thread and completes its request if it can be completed, because it altered the state of the syncronizer and because of that
+it might have created conditions that allow other threads to complete their requests. This process works in both ways, 
+between the producers and consumers threads.
 
 Normal execution:
 - A thread calls `tryEnqueue` and expects to enqueue a message within the given timeout. 
