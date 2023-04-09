@@ -14,7 +14,7 @@ class FifoOrderTests {
             4 to listOf(16, 17, 18, 19, 20),
             5 to listOf(21, 22, 23, 24, 25)
         )
-        assertTrue(isInFifoOrder(map))
+        assertTrue(isBalanced(map))
     }
 
     @Test
@@ -26,6 +26,6 @@ class FifoOrderTests {
             4 to listOf(16, 17, 18, 19, 20),
             5 to listOf(21, 22, 23, 24, 25, 26)
         )
-        assertFalse(isInFifoOrder(map))
+        assertFalse(isBalanced(map))
     }
 }

@@ -3,7 +3,7 @@ package pt.isel.pc.problemsets.set1
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
-import pt.isel.pc.problemsets.utils.isInFifoOrder
+import pt.isel.pc.problemsets.utils.isBalanced
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.locks.Lock
@@ -270,10 +270,10 @@ class BlockingMessageQueueTests {
         // Check if FIFO order is preserved when multiple producer threads try to exchange messages
         val exchangedMsgsMap = exchangedMsgs.keys.groupBy({it.threadId}, {it.repetionId})
         println(exchangedMsgsMap)
-        assertTrue(isInFifoOrder(exchangedMsgsMap))
+        assertTrue(isBalanced(exchangedMsgsMap))
         // Check if FIFO order is preserved when multiple consumer threads try to retrieve messages
         val retrievedMsgsMap = retrievedMsgs.groupBy({it.threadId}, {it.repetionId})
-        assertTrue(isInFifoOrder(retrievedMsgsMap))
+        assertTrue(isBalanced(retrievedMsgsMap))
     }
 
     @Test

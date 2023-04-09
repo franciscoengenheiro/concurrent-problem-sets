@@ -12,6 +12,9 @@ import kotlin.concurrent.withLock
 class SimpleThreadPool(
     private val maxThreads: Int,
 ) {
+    init {
+        require(maxThreads > 0) { "maxThreads must be a natural number" }
+    }
 
     private val lock = ReentrantLock()
     private val workItems = NodeLinkedList<Runnable>()

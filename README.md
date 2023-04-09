@@ -6,11 +6,12 @@
 
 ## Table of Contents 
 - [Set1](#set1)
-  - [NaryExchanger](#naryexchanger)
+  - [NAryExchanger](#naryexchanger)
   - [BlockinMessageQueue](#blockingmessagequeue)
+  - [ThreadPoolExecutor](#threadpoolexecutor)
 
 ## Set1
-### NaryExchanger
+### NAryExchanger
 This exchanger implementation is similar to the [Java Exchanger](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/Exchanger.html), but it allows to exchange generic values between 
 an arbitrary group of threads instead of just two. It also allows for each thread to specify a willing-to-wait 
 timeout for the exchange operation to complete.
@@ -19,6 +20,14 @@ The exchanger is able to create multiple groups of threads with the same specifi
 and each thread can only exchange values with the threads of its group.
 
 A group is completed if the number of threads required to complete the group equals the specified group size.
+
+Public Interface:
+```kotlin
+class NAryExchanger<T>(groupSize: Int) {
+    @Throws(InterruptedException::class)
+    fun exchange(value: T, timeout: Duration): List<T>?
+}
+```
 
 In the following image, an example can be seen of such iteraction between the exchanger and a set of threads.
 
@@ -29,14 +38,6 @@ In the following image, an example can be seen of such iteraction between the ex
 |                *NAryExchanger example*                 |
 
 </div>
-
-Public Interface:
-```kotlin
-class NAryExchanger<T>(groupSize: Int) {
-    @Throws(InterruptedException::class)
-    fun exchange(value: T, timeout: Duration): List<T>?
-}
-```
 
 Style of syncronization: 
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
@@ -82,16 +83,6 @@ This type of syncronizer is useful when dealing in scenarios with multiple produ
 and as such, it is important to ensure that the messages are enqueued and dequeued in the same order they were called,
 because of that the queue was implemented using FIFO (*First In First Out*) ordering.
 
-In the following image, an example can be seen of such iteraction between the blocking queue and a set of producer and consumer threads.
-
-<div style="text-align: center;">
-
-| ![BlockingMessageQueue](src/main/resources/BlockingMessageQueue.png) |
-|:--------------------------------------------------------------------:|
-|                    *BlockingMessageQueue example*                    |
-
-</div>
-
 Public Interface:
 ```kotlin
 class BlockingMessageQueue<T>(private val capacity: Int) {
@@ -101,6 +92,16 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     fun tryDequeue(nOfMessages: Int, timeout: Duration): List<T>?
 }
 ```
+
+In the following image, an example can be seen of the iteraction between the blocking queue and a set of producer and consumer threads.
+
+<div style="text-align: center;">
+
+| ![BlockingMessageQueue](src/main/resources/BlockingMessageQueue.png) |
+|:--------------------------------------------------------------------:|
+|                    *BlockingMessageQueue example*                    |
+
+</div>
 
 Style of syncronization:
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, which one representing a different condition:
@@ -145,7 +146,62 @@ Conditions of execution:
 - A thread calls `tryDequeue` and:
     - the *message queue* has at least `nOfMessages` messages, and the thread is the head of the *consumer requests queue*, the thread dequeues the messages and returns them (***fast-path***). In this path the thread also checks if the next `Producer request` can be completed, and if so, it completes it.
     - the *message queue* has less than `nOfMessages` messages, or the thread is not the head of the *consumer requests queue*, and as such, the thread passively awaits to be able to dequeue the messages (***wait-path***). In the meantime if:
-        - the thread willing-to-wait time for the dequeue to happen expires, it removes its request and checks if the are `Consumer request` to be completed, if so completes them, and always returns `null`.
+        - the thread willing-to-wait time for the dequeue to happen expires, it removes its request and checks if there are `Consumer request` to be completed, if so completes them, and always returns `null`.
         - the thread is *interrupted* while waiting to dequeue the messages, which means two things might happen, either:
             - its request was completed by another thread, and as such, the thread can't give-up and dequeues the messages and checks if the next `Producer request` can be completed. If there is, it completes it, and always returns the `dequeued messages`.
             - its request wasn't completed, and as such, the thread gives up by removing its request from the *consumer requests queue*. Since giving up might create conditions for other threads to procede, this thread also checks if the other `Consumer requests` can be completed, if so completes them. Finally, the thread throws an `InterruptedException`.
+
+### ThreadPoolExecutor
+This syncronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
+that allows outside threads to delegate the execution of a task to other threads - worker threads -
+that are managed by the syncronizer.
+
+The thread pool is bounded,
+meaning that it has a maximum number of worker threads that can be created to execute received tasks.
+
+The worker threads are created lazily,
+and are kept alive for the specified time interval, after which they're terminated.
+
+If a thread tries to execute a task when the thread pool is full,
+it will block until a thread is available to execute that task.
+
+Public Interface:
+```kotlin
+class ThreadPoolExecutor(
+    private val maxThreadPoolSize: Int,
+    private val keepAliveTime: Duration,
+) {
+    @Throws(RejectedExecutionException::class)
+    fun execute(runnable: Runnable)
+    fun shutdown()
+    @Throws(InterruptedException::class)
+    fun awaitTermination(timeout: Duration): Boolean
+}
+```
+
+In the following image, 
+the execution inside the syncronizer of a task that is delegated to a worker thread to be executed, can be seen.
+
+<div style="text-align: center;">
+
+| ![ThreadPoolExcecutor](src/main/resources/ThreadPoolExecutor.png) |
+|:-----------------------------------------------------------------:|
+|                   *ThreadPoolExcecutor example*                   |
+
+</div>
+
+Style of syncronization:
+- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which
+  represents a worker thread request to execute a task.
+- The described `Request` is defined as follows:     
+    ```kotlin
+    private class WorkerRequest(
+        val condition: Condition,
+        var canExecute: Boolean = false         
+    )
+    ```
+  
+Normal execution:
+- A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.
+
+Conditions of execution:
