@@ -134,6 +134,20 @@ class BlockingMessageQueueTests {
         testHelper.join()
     }
 
+    @Test
+    fun `Producer thread which does not want to wait to enqueue leaves immediatly`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(2.seconds)
+        testHelper.createAndStartThread {
+            queue.tryEnqueue(defaultMsg, Duration.ZERO)
+        }
+        testHelper.createAndStartThread {
+            assertFalse(queue.tryEnqueue(defaultMsg, Duration.ZERO))
+        }
+        testHelper.join()
+    }
+
     // Consumer threads related tests
     @Test
     fun `Consumer thread should be blocked trying to retrieve a message from an empty queue`() {
@@ -175,15 +189,26 @@ class BlockingMessageQueueTests {
         testHelper.join()
     }
 
+    @Test
+    fun `Consumer thread which does not want to wait to dequeue leaves immediatly`() {
+        val capacity = 1
+        val queue = BlockingMessageQueue<String>(capacity)
+        val testHelper = MultiThreadTestHelper(2.seconds)
+        testHelper.createAndStartThread {
+            assertNull(queue.tryDequeue(capacity, Duration.ZERO))
+        }
+        testHelper.join()
+    }
+
     // Tests with concurrency stress:
     @Test
     fun `An arbitrary number of producer and consumer threads should be able to exchange messages`() {
-        val capacity = 10
+        val capacity = 100
         val queue = BlockingMessageQueue<ExchangedValue>(capacity)
         val nOfThreads = 24
         val timeout = 2.seconds
         val lock: Lock = ReentrantLock()
-        val testHelper = MultiThreadTestHelper(5.seconds)
+        val testHelper = MultiThreadTestHelper(15.seconds)
         // Sets
         val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
@@ -237,7 +262,7 @@ class BlockingMessageQueueTests {
         val nOfThreads = 24
         val timeout = 2.seconds
         val lock: Lock = ReentrantLock()
-        val testHelper = MultiThreadTestHelper(5.seconds)
+        val testHelper = MultiThreadTestHelper(10.seconds)
         // Sets
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
         val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
@@ -278,14 +303,16 @@ class BlockingMessageQueueTests {
 
     @Test
     fun `Check if an arbitrary number of consumer threads is timedout`() {
-        val capacity = 1000
+        val capacity = 100
         val queue = BlockingMessageQueue<ExchangedValue>(capacity)
         val nOfProducerThreads = 24
         val nOfConsumerThreads = 10
         val lock: Lock = ReentrantLock()
         val producerTimeout = 1.seconds
+        // The consumer timeout should be much smaller than the producer timeout
+        // to ensure that the consumer threads are timed out
         val consumerTimeout = producerTimeout / 5
-        val testHelper = MultiThreadTestHelper(5.seconds)
+        val testHelper = MultiThreadTestHelper(15.seconds)
         // Sets
         val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()

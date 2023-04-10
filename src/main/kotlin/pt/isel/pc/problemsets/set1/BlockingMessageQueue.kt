@@ -7,11 +7,12 @@ import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Similar to a [ArrayBlockingQueue], this syncronizer supports the communication between multiple threads
- * or processes. An internal queue is used to store messages that are inserted by producer threads and extracted
- * by consumer threads. This queue orders elements in FIFO (*first-in-first-out*) order to avoid thread starvation.
+ * or processes. An internal queue is used to store messages that are inserted by *producer threads* and extracted
+ * by *consumer threads*. This queue orders elements in FIFO (*first-in-first-out*) order to avoid *thread starvation*.
  * The *head* of the queue is the element that has been on the queue the longest time and the *tail* of the queue
  * the element that has been on the queue the shortest time. New elements are inserted at the tail of the queue,
  * and the queue retrieval operations obtain elements at the head of the queue.
@@ -49,12 +50,14 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     private val messageQueue: NodeLinkedList<T> = NodeLinkedList()
 
     /**
-     * Tries to enqueue a message. If the queue is full, the calling thread will be blocked until
-     * the message can be enqueued without exceeding the queue capacity or delivered to a consumer thread.
+     * Tries to enqueue a message.
+     * If the queue is full, the calling thread will be blocked until
+     * it can be delivered to a consumer thread or the message can be enqueued
+     * without exceeding the queue capacity.
      * @param message the message to be enqueued.
-     * @param timeout the maximum time to wait for the message to be enqueued.
-     * @returns true if the message was enqueued or delivered to a consumer thread withing the [timeout] duration,
-     * false otherwise.
+     * @param timeout the maximum time to wait for the message to be delivered.
+     * @returns true if the message was enqueued or delivered direclty to a consumer thread withing the
+     * [timeout] duration, false otherwise.
      * @throws InterruptedException if the current thread is interrupted while waiting to enqueue a [message].
      * Note that if the current thread is interrupted but can enqueue, it will return true and not throw
      * [InterruptedException] unless it's blocked again.
@@ -62,17 +65,28 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     @Throws(InterruptedException::class)
     fun tryEnqueue(message: T, timeout: Duration): Boolean {
         lock.withLock {
-            // fast-path -> The thread that tries to enqueue a message can do it immediately because it
-            // is the first thread at the head of the producer requests queue and the message queue is at full
-            // capacity, and as such, it can enqueue the message
-            if (producerRequestsQueue.empty && messageQueue.count < capacity) {
+            // fast-path:
+            if (consumerRequestsQueue.notEmpty && consumerRequestsQueue.headNode?.value?.nOfMessages == 1) {
+                // The thread that tries to enqueue a message can do it immediately because it
+                // there a consumer thread waiting to dequeue the message,
+                // and it's requesting a single message
+                // which this producer thread can complete by delivering the message direclty.
+                completeConsumerRequest(listOf(message))
+                return true
+            } else if(producerRequestsQueue.empty && messageQueue.count < capacity) {
+                // The thread that tries to enqueue a message can do it immediately because it
+                // is the first thread at the head of the producer requests queue
+                // and the message queue is not full
                 messageQueue.enqueue(message)
                 tryToCompleteConsumerRequests()
                 return true
             }
-            // wait-path -> The thread that tries to enqueue a message cannot do it because it is not the first
-            // thread at the head of the producer requests queue or the message queue is full, and as such,
-            // it must wait for its turn to enqueue a message
+            // the current thread does not want to wait
+            if (timeout == 0.seconds) {
+                return false
+            }
+            // wait-path -> The thread that tries to enqueue a message could not do it, and as a result,
+            // it will be blocked until the message can be enqueued or delivered to a consumer thread.
             var remainingNanos = timeout.inWholeNanoseconds
             val localRequest = producerRequestsQueue.enqueue(
                 ProducerRequest(message, lock.newCondition())
@@ -91,7 +105,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     }
                     // Giving-up by interruption, remove value from the producer requests queue
                     producerRequestsQueue.remove(localRequest)
-                    tryToCompleteTheNextProducerRequest()
                     throw e
                 }
                 if (localRequest.value.canEnqueue) {
@@ -101,7 +114,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 if (remainingNanos <= 0) {
                     // Giving-up by timeout, remove value from the producer requests queue
                     producerRequestsQueue.remove(localRequest)
-                    tryToCompleteTheNextProducerRequest()
                     return false
                 }
             }
@@ -127,8 +139,12 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
             // messages to satisfy the request
             if (consumerRequestsQueue.empty && messageQueue.count >= nOfMessages) {
                 val list = dequeueMessages(nOfMessages)
-                tryToCompleteTheNextProducerRequest()
+                tryToCompleteProducerRequests()
                 return list
+            }
+            // the current thread does not want to wait
+            if (timeout == 0.seconds) {
+                return null
             }
             // wait-path -> The thread that tries to dequeue a set of messages cannot do it because it is not the
             // first thread at the head of the consumer requests queue or the message queue does not have enough
@@ -146,7 +162,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
                         // This thread cannot giveup since it's request was completed
-                        tryToCompleteTheNextProducerRequest()
+                        tryToCompleteProducerRequests()
                         return localRequest.value.messages
                     }
                     // Giving-up by interruption, remove value from the queue
@@ -155,7 +171,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     throw e
                 }
                 if (localRequest.value.canDequeue) {
-                    tryToCompleteTheNextProducerRequest()
+                    tryToCompleteProducerRequests()
                     return localRequest.value.messages
                 }
                 if (remainingNanos <= 0) {
@@ -170,23 +186,33 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
 
     /**
      * Tries to complete the consumer requests that can be completed.
-     * A consumer request can be completed if the message queue has enough messages to satisfy the request.
+     * A [ConsumerRequest] can be completed if the message queue has enough messages to satisfy the request.
      */
     private fun tryToCompleteConsumerRequests() {
         // Check if Consumer requests can be completed
         while (consumerRequestsQueue.headCondition { it.nOfMessages <= messageQueue.count }) {
-            val request = consumerRequestsQueue.pull().value
-            request.messages = dequeueMessages(request.nOfMessages)
-            request.condition.signal()
-            request.canDequeue = true
+            completeConsumerRequest()
         }
     }
 
     /**
-     * Tries to complete the next producer request if there is one and the message queue is not full.
+     * Completes a [ConsumerRequest] request by dequeuing a set of messages from the message queue or by providing
+     * a list of messages to be used to complete the request.
+     * @param directMessages a list of messages to be used to complete the request.
+     * If null, the messages will be dequeued from the message queue.
      */
-    private fun tryToCompleteTheNextProducerRequest() {
-        if (producerRequestsQueue.notEmpty && messageQueue.count < capacity) {
+    private fun completeConsumerRequest(directMessages: List<T>? = null) {
+        val request = consumerRequestsQueue.pull().value
+        request.messages = directMessages ?: dequeueMessages(request.nOfMessages)
+        request.condition.signal()
+        request.canDequeue = true
+    }
+
+    /**
+     * Tries to complete all [ProducerRequest] if there is any and the message queue is not full.
+     */
+    private fun tryToCompleteProducerRequests() {
+        while (producerRequestsQueue.notEmpty && messageQueue.count < capacity) {
             // Take the next producer request from the queue and complete it
             val request = producerRequestsQueue.pull().value
             messageQueue.enqueue(request.message)
@@ -202,7 +228,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
      */
     private fun dequeueMessages(nOfMessages: Int): List<T> {
         val list: MutableList<T> = mutableListOf()
-        for (i in 0 until nOfMessages) {
+        repeat(nOfMessages) {
             val message = messageQueue.pull().value
             list.add(message)
         }

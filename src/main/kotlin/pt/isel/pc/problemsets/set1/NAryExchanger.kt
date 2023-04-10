@@ -4,6 +4,7 @@ import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * A blocking exchange syncronization mechanism that allows [groupSize] threads to exchange values.
@@ -47,9 +48,7 @@ class NAryExchanger<T>(private val groupSize: Int) {
         lock.withLock {
             // Fast-path -> The current thread joins the group as the last element
             // and thus completing it
-            println("Threads in the group: $elementsAlreadyInGroup")
             if (elementsAlreadyInGroup == groupSize - 1) {
-                print("${Thread.currentThread().name} joined and completed the group\n")
                 // Complete the group and signal all threads waiting for the group to be completed
                 // that this condition is now true
                 currentRequest.isGroupCompleted = true
@@ -60,6 +59,10 @@ class NAryExchanger<T>(private val groupSize: Int) {
                 currentRequest = Request(lock.newCondition())
                 elementsAlreadyInGroup = 0
                 return values.toList()
+            }
+            // the current thread does not want to wait
+            if (timeout == 0.seconds) {
+                return null
             }
             // Wait-path -> The current thread joins the group but does not complete it and
             // thus awais until that condition is true

@@ -84,6 +84,16 @@ class NAryExchangerTests {
     }
 
     @Test
+    fun `Thread which does not want to wait to exchange leaves immediatly`() {
+        val exchanger: NAryExchanger<Int> = NAryExchanger(2)
+        val testHelper = MultiThreadTestHelper(2.seconds)
+        testHelper.createAndStartThread {
+            assertNull(exchanger.exchange(0, Duration.ZERO))
+        }
+        testHelper.join()
+    }
+
+    @Test
     fun `Exchanger should discard the values received by threads that were interrupted before a group was formed`() {
         val exchanger: NAryExchanger<Int> = NAryExchanger(2)
         val testHelper = MultiThreadTestHelper(15.seconds)
