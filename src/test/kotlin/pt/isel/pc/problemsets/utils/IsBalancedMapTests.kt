@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class FifoOrderTests {
+class IsBalancedMapTests {
     @Test
     fun `Check if received maps are in fifo order`() {
         val map = mapOf(

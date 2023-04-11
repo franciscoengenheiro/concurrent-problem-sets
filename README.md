@@ -200,15 +200,7 @@ The executor has a lifecycle that can be described by the following states:
   |                  *ThreadPoolExecutor states*                  |
 
 #### Style of syncronization:
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which
-  represents a worker thread request to execute a task.
-- The described `Request` is defined as follows:     
-    ```kotlin
-    private class WorkerRequest(
-        val condition: Condition,
-        var canExecute: Boolean = false         
-    )
-    ```
+- No particular style of syncronization was used in this syncronizer. 
   
 #### Normal execution:
 - A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.

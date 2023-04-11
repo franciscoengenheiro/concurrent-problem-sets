@@ -41,7 +41,7 @@ class SimpleThreadPool(
         }
     }
 
-    sealed class GetWorkItemResult {
+    private sealed class GetWorkItemResult {
         object Exit : GetWorkItemResult()
         class WorkItem(val workItem: Runnable) : GetWorkItemResult()
     }

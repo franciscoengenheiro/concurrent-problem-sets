@@ -22,6 +22,7 @@ class BlockingMessageQueueTests {
 
     private val defaultMsg = "message"
     private fun randomNumber(capacity: Int) = (1..capacity).random()
+
     // tests without concurrency stress:
     @Test
     fun `Queue should let a consumer thread retrieve a value gave by a producer thread`() {
@@ -208,7 +209,7 @@ class BlockingMessageQueueTests {
         val nOfThreads = 24
         val timeout = 2.seconds
         val lock: Lock = ReentrantLock()
-        val testHelper = MultiThreadTestHelper(15.seconds)
+        val testHelper = MultiThreadTestHelper(5.seconds)
         // Sets
         val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
@@ -262,7 +263,7 @@ class BlockingMessageQueueTests {
         val nOfThreads = 24
         val timeout = 2.seconds
         val lock: Lock = ReentrantLock()
-        val testHelper = MultiThreadTestHelper(10.seconds)
+        val testHelper = MultiThreadTestHelper(5.seconds)
         // Sets
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
         val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
@@ -312,7 +313,7 @@ class BlockingMessageQueueTests {
         // The consumer timeout should be much smaller than the producer timeout
         // to ensure that the consumer threads are timed out
         val consumerTimeout = producerTimeout / 5
-        val testHelper = MultiThreadTestHelper(15.seconds)
+        val testHelper = MultiThreadTestHelper(5.seconds)
         // Sets
         val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
