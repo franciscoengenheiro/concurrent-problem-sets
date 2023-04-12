@@ -20,30 +20,18 @@ class NAryExchangerTests {
     // Tests without concurrency stress:
     @Test
     fun `Exchanger should return values received by a thread group`() {
-        val mapOfCaughtExceptions: ConcurrentMap<Thread, Throwable> = ConcurrentHashMap()
-        val groupSize = 5
+        val groupSize = 500
         val expectedValues = List(groupSize) { it }
         val exchanger: NAryExchanger<Int> = NAryExchanger(groupSize)
+        val testHelper = MultiThreadTestHelper(5.seconds)
         val timeout = 1.seconds
-        val ths = List(groupSize) {
-            Thread {
-                try {
-                    val result = exchanger.exchange(it, timeout)
-                    requireNotNull(result)
-                    assertEquals(groupSize, result.size)
-                    assertEquals(expectedValues.toSet(), result.toSet())
-                } catch (t: Throwable) {
-                    mapOfCaughtExceptions.computeIfAbsent(Thread.currentThread()) { t }
-                }
-            }
+        testHelper.createAndStartMultipleThreads(groupSize) { it, _ ->
+            val result = exchanger.exchange(it, timeout)
+            requireNotNull(result)
+            assertEquals(groupSize, result.size)
+            assertEquals(expectedValues, result.sorted())
         }
-        // Start each thread
-        ths.forEach { it.start() }
-        // Wait for all threads to finish
-        ths.forEach { it.join() }
-        mapOfCaughtExceptions.forEach { (t, e) ->
-            throw AssertionError("Thread ${t.name} failed with exception: $e")
-        }
+        testHelper.join()
     }
 
     @Test
@@ -56,13 +44,12 @@ class NAryExchangerTests {
     @Test
     fun `Exchanger should not throw an exception if a thread inside of a completed group is interrupted`() {
         val exchanger: NAryExchanger<Int> = NAryExchanger(2)
-        val lock: Lock = ReentrantLock()
         val testHelper = MultiThreadTestHelper(10.seconds)
         val th1 = testHelper.createAndStartThread {
             exchanger.exchange(0, Duration.INFINITE)
         }
         spinUntilTimedWait(th1, 5.seconds)
-        val th2 = testHelper.createAndStartThread {
+        testHelper.createAndStartThread {
             exchanger.exchange(1, Duration.INFINITE)
             th1.interrupt()
         }
@@ -84,7 +71,7 @@ class NAryExchangerTests {
     }
 
     @Test
-    fun `Thread which does not want to wait to exchange leaves immediatly`() {
+    fun `Thread which does not want to wait for the exchange operation leaves immediatly`() {
         val exchanger: NAryExchanger<Int> = NAryExchanger(2)
         val testHelper = MultiThreadTestHelper(2.seconds)
         testHelper.createAndStartThread {
@@ -105,21 +92,21 @@ class NAryExchangerTests {
         // Ask the thread 1 to interrupt itself
         th1.interrupt()
         // Form a new group
-        val th2 = testHelper.createAndStartThread {
+        testHelper.createAndStartThread {
             assertEquals(listOf(1, 2).toSet(), exchanger.exchange(1, Duration.INFINITE)?.toSet())
         }
-        val th3 = testHelper.createAndStartThread {
+        testHelper.createAndStartThread {
             assertEquals(listOf(1, 2).toSet(), exchanger.exchange(2, Duration.INFINITE)?.toSet())
         }
         testHelper.join()
     }
 
     @Test
-    fun `Exchanger should return null if a thread willing-to-wait timeout has expired`() {
+    fun `Exchanger should return null if has no timeout and it does not complete a group`() {
         val groupSize = 2
         val testHelper = MultiThreadTestHelper(10.seconds)
         val exchanger: NAryExchanger<String> = NAryExchanger(groupSize)
-        val th1 = testHelper.createAndStartThread {
+        testHelper.createAndStartThread {
             val result = exchanger.exchange("value", Duration.ZERO)
             assertNull(result)
         }

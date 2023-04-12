@@ -1,5 +1,7 @@
 package pt.isel.pc.problemsets.set1
 
+import org.slf4j.LoggerFactory
+import pt.isel.pc.problemsets.sync.SimpleThreadPool
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
@@ -36,16 +38,8 @@ class ThreadPoolExecutor(
     private val awaitWorkItemCondition = lock.newCondition()
     private val awaitTerminationCondition = lock.newCondition()
 
-    // state
+    // internal state
     private var nOfWorkerThreads: Int = 0
-        set(value) {
-            field = value
-            if (inShutdown && value == 0) {
-                // signal all threads that are waiting for the thread pool executor to shut down
-                // that condition is now true
-                awaitTerminationCondition.signalAll()
-            }
-        }
     private var nOfWaitingWorkerThreads = 0
     private var inShutdown = false
 
@@ -61,28 +55,43 @@ class ThreadPoolExecutor(
     /**
      * Initiates an orderly shutdown in which previously submitted work items are executed,
      * but no new work items will be accepted.
+     * This method awakes all worker threads that were waiting for
+     * work in order to ensure no worker threads is either terminated or
+     * executing the work item that was put in the queue after the shutdown was initiated.
      * Invocation has no additional effect if already shut down.
      */
-    fun shutdown() = lock.withLock { inShutdown = true }
+    fun shutdown() = lock.withLock {
+        if (!inShutdown) {
+            inShutdown = true
+            awaitWorkItemCondition.signalAll()
+        }
+    }
 
     /**
-     * Provides a way to syncronize with the shutdown of the thread pool executor.
+     * Provides a way to syncronize with the shut-down of the thread pool executor.
      * @param timeout the maximum time to wait for the thread pool executor to shut down.
      * @return true if the thread pool executor has been shut down, false if it didn't
      * in the given timeout.
-     * @throws InterruptedException if the current thread is interrupted while waiting.
+     * @throws InterruptedException if the current thread is interrupted while waiting for the
+     * thread pool executor to shut down.
      */
     @Throws(InterruptedException::class)
     fun awaitTermination(timeout: Duration): Boolean {
         lock.withLock {
             // fast-path
-            if (inShutdown && nOfWorkerThreads == 0) return true
+            if (inShutdown && nOfWorkerThreads == 0)
+                return true
+            // the thread that called this method does not want to wait
+            if (timeout.inWholeNanoseconds == 0L)
+                return false
             // wait-path
             var remainingNanos = timeout.inWholeNanoseconds
             while (true) {
                 remainingNanos = awaitTerminationCondition.awaitNanos(remainingNanos)
-                if (inShutdown && nOfWorkerThreads == 0) return true
-                if (remainingNanos <= 0) return false
+                if (inShutdown && nOfWorkerThreads == 0)
+                    return true
+                if (remainingNanos <= 0)
+                    return false
             }
         }
     }
@@ -138,9 +147,19 @@ class ThreadPoolExecutor(
             if (workItemsQueue.notEmpty) {
                 return GetWorkItemResult.WorkItem(workItemsQueue.pull().value)
             }
-            // Do not accept new work items if the thread pool is in shutdown mode
+            // If timeout is 0, the worker thread should be terminated immediately
+            // and not wait for a work item to be placed in the queue
+            if (timeout == 0L) {
+                return GetWorkItemResult.Exit
+            }
+            // Terminate this worker thread if the thread pool is in shutdown mode
+            // and there are no more work items in the queue
             if (inShutdown) {
                 nOfWorkerThreads -= 1
+                // If this was the last worker thread, signal that the thread pool has terminated
+                if (nOfWorkerThreads == 0) {
+                    awaitTerminationCondition.signalAll()
+                }
                 return GetWorkItemResult.Exit
             }
             // wait-path
@@ -159,10 +178,13 @@ class ThreadPoolExecutor(
                     nOfWaitingWorkerThreads -= 1
                     return GetWorkItemResult.WorkItem(workItemsQueue.pull().value)
                 }
-                // Do not accept new work items if the thread pool is in shutdown mode
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
                     nOfWorkerThreads -= 1
+                    if (nOfWorkerThreads == 0) {
+                        // If this was the last worker thread, signal that the thread pool is terminated
+                        awaitTerminationCondition.signalAll()
+                    }
                     return GetWorkItemResult.Exit
                 }
                 if (remainingNanos <= 0) {
@@ -194,7 +216,7 @@ class ThreadPoolExecutor(
             }
             remainingNanos -= retrievalTime
             if (remainingNanos <= 0) {
-                decreaseNumOfWorkerThreads()
+                lock.withLock { nOfWorkerThreads -= 1 }
                 return
             }
             currentRunnable = when (result) {
@@ -217,7 +239,7 @@ class ThreadPoolExecutor(
         return elapsedTime to result
     }
 
-    private fun decreaseNumOfWorkerThreads() = lock.withLock { nOfWorkerThreads -= 1 }
+    private val logger = LoggerFactory.getLogger(ThreadPoolExecutor::class.java)
 
     /**
      * Runs the given [runnable] and catches any exception that might be thrown.
@@ -227,7 +249,9 @@ class ThreadPoolExecutor(
         try {
             runnable.run()
         } catch (ex: Throwable) {
-            // TODO("Is this the right way to handle the exceptions?")
+            logger.warn("Unexpected exception while running work item, ignoring it")
+            // ignoring exception
         }
     }
+
 }
