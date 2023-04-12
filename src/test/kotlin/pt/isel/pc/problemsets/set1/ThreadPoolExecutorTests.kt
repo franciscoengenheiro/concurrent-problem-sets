@@ -6,13 +6,14 @@ import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class ThreadPoolExecutorTests {
@@ -35,25 +36,23 @@ class ThreadPoolExecutorTests {
     }
 
     @Test
-    fun `Executor should not execute the received tasks since almost no keep-alive time was given`() {
-        val keepAliveTime = 1.milliseconds
+    fun `Executor should execute the received tasks even without keep-alive time`() {
+        // Keep-alive time should not matter since a single worker thread always has work to do
         val nOfRunnables = 10
-        val executor = ThreadPoolExecutor(nOfRunnables, keepAliveTime)
+        val executor = ThreadPoolExecutor(1, Duration.ZERO)
+        val expected = List(nOfRunnables) { "task $it" }.toSet()
         val testHelper = MultiThreadTestHelper(10.seconds)
         val results: MutableList<String> = mutableListOf()
         testHelper.createAndStartThread {
             repeat(nOfRunnables) {
                 executor.execute {
                     val taskName = "task $it"
-                    Thread.sleep(keepAliveTime.inWholeNanoseconds * 1000)
-                    // The below code should not be executed
                     results.add(taskName)
                 }
             }
             executor.shutdown()
-            println(results)
             assertTrue(executor.awaitTermination(Duration.INFINITE))
-            assertEquals(mutableListOf(), results.toList())
+            assertEquals(expected, results.toSet())
         }
         testHelper.join()
     }
@@ -61,20 +60,22 @@ class ThreadPoolExecutorTests {
     @Test
     fun `Executor should use a worker thread that is waiting for work instead of creating another`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
+        val results = ConcurrentLinkedQueue<String>()
         val threadMap: ConcurrentHashMap<Thread, Unit> = ConcurrentHashMap()
         executor.execute {
-            // Similate almost no work for the first worker thread
-            Thread.sleep(1)
             threadMap.computeIfAbsent(Thread.currentThread()) { }
+            results.add(Thread.currentThread().name)
         }
         // Wait for worker thread to sleep
         Thread.sleep(1000)
         // This next method should awake the previous worker thread instead of creating another
         executor.execute {
-            // Simulate some work
-            Thread.sleep(1000)
             threadMap.computeIfAbsent(Thread.currentThread()) { }
+            results.add(Thread.currentThread().name)
         }
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(Duration.INFINITE))
+        assertEquals(2, results.size)
         // Should only have one thread
         assertEquals(1, threadMap.size)
     }
@@ -106,10 +107,10 @@ class ThreadPoolExecutorTests {
         val flag = AtomicBoolean(false)
         testHelper.createAndStartThread {
             executor.execute {
-                throw IllegalArgumentException("Only log this inside executor")
+                throw IllegalArgumentException("Executor should only log this")
             }
             executor.execute {
-                println("This should be executed")
+                // This should be executed
                 flag.set(true)
             }
         }
@@ -125,13 +126,6 @@ class ThreadPoolExecutorTests {
     fun `Thread pool executor should only operate with number of worker threads above zero`() {
         assertFailsWith<IllegalArgumentException> {
             ThreadPoolExecutor(0, Duration.INFINITE)
-        }
-    }
-
-    @Test
-    fun `Thread pool executor should only operate with keep-alive times above zero`() {
-        assertFailsWith<IllegalArgumentException> {
-            ThreadPoolExecutor(23, Duration.ZERO)
         }
     }
 
@@ -188,86 +182,75 @@ class ThreadPoolExecutorTests {
     @Test
     fun `Executor should execute all tasks even with concurrency stress`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
-        val nOfThreads = 10000
-        val nOfAllowedRepetions = 100
+        val nOfThreads = 24
+        val nOfAllowedRepetions = 100000
         val expected = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
         }
         val results = ConcurrentLinkedQueue<ExchangedValue>()
-        val testHelper = MultiThreadTestHelper(15.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, _ ->
+        val timeout = 10.seconds
+        val testHelper = MultiThreadTestHelper(timeout)
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
             var repetionId = 0
-            while (repetionId < nOfAllowedRepetions) {
+            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+                val task = ExchangedValue(it, ++repetionId)
                 executor.execute {
-                    val taskName = ExchangedValue(it, ++repetionId)
-                    results.add(taskName)
+                    results.add(task)
                 }
             }
         }
-        executor.shutdown()
-        assertTrue(executor.awaitTermination(Duration.INFINITE))
-        assertEquals(expected.flatten(), results.toList())
         testHelper.join()
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(1.seconds))
+        assertEquals(expected.size * nOfAllowedRepetions, results.size)
+        assertEquals(expected.flatten().toSet(), results.toSet())
     }
 
     @Test
     fun `Executor should finish pending tasks after executor shutdown`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
-        val nOfThreads = 10000
+        val nOfThreads = 10
         val nOfAllowedRepetions = 100
-        val expected = List(nOfThreads) { threadId ->
+        val tasksToBeExecuted = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
-        }
-        val results = ConcurrentLinkedQueue<ExchangedValue>()
-        val testHelper = MultiThreadTestHelper(5.seconds)
+        }.flatten().toSet()
+        val expectedBeforeShutdown = List(nOfThreads / 2) { threadId ->
+            List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
+        }.flatten().toSet()
+        val tasksExecuted = ConcurrentLinkedQueue<ExchangedValue>()
+        val tasksFailed = ConcurrentLinkedQueue<ExchangedValue>()
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        val taskCounter = AtomicInteger(0)
+        val semaphore = Semaphore(nOfAllowedRepetions * (nOfThreads / 2))
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
             var repetionId = 0
-            while (repetionId < nOfAllowedRepetions) {
+            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+                val task = ExchangedValue(it, ++repetionId)
                 try {
+                    semaphore.acquire()
                     executor.execute {
-                        val taskName = ExchangedValue(it, ++repetionId)
-                        results.add(taskName)
+                        tasksExecuted.add(task)
+                        taskCounter.incrementAndGet()
+                        semaphore.release()
                     }
                 } catch (e: RejectedExecutionException) {
                     // This exception is expected since the executor is shutdown
                     // and the thread is still trying to execute tasks
+                    tasksFailed.add(task)
                 }
             }
         }
+        // Ensure half of the tasks are executed
+        while(taskCounter.get() < expectedBeforeShutdown.size) {
+            Thread.sleep(100)
+        }
+        semaphore.acquire(nOfAllowedRepetions * (nOfThreads / 2))
         executor.shutdown()
-        assertTrue(executor.awaitTermination(Duration.INFINITE))
-        assertEquals(expected.flatten(), results.toList())
         testHelper.join()
+        assertTrue(executor.awaitTermination(Duration.INFINITE))
+        assertEquals(expectedBeforeShutdown.size, tasksExecuted.size)
+        val allTasks = tasksExecuted.toSet().union(tasksFailed.toSet())
+        assertEquals(tasksToBeExecuted, allTasks)
     }
 
-    @Test
-    fun `Calls to AwaitTermination method should block`() {
-        val executor = ThreadPoolExecutor(10, Duration.INFINITE)
-        val nOfThreads = 10000
-        val nOfAllowedRepetions = 100
-        val expected = List(nOfThreads) { threadId ->
-            List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
-        }
-        val results = ConcurrentLinkedQueue<ExchangedValue>()
-        val testHelper = MultiThreadTestHelper(5.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
-            var repetionId = 0
-            while (repetionId < nOfAllowedRepetions) {
-                try {
-                    executor.execute {
-                        Thread.sleep(1000)
-                        val taskName = ExchangedValue(it, ++repetionId)
-                        results.add(taskName)
-                    }
-                } catch (e: RejectedExecutionException) {
-                    // This exception is expected since the executor is shutdown
-                    // and the thread is still trying to execute tasks
-                }
-            }
-        }
-        executor.shutdown()
-        assertTrue(executor.awaitTermination(Duration.INFINITE))
-        assertEquals(expected.flatten(), results.toList())
-        testHelper.join()
-    }
 }

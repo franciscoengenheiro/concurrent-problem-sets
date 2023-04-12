@@ -74,6 +74,18 @@ class BlockingMessageQueueTests {
         }
     }
 
+    @Test
+    fun `Consumer threads should only be able to dequeue nOfMessages between 1 and capacity`() {
+        val capacity = 2
+        val queue = BlockingMessageQueue<String>(capacity)
+        assertFailsWith<IllegalArgumentException> {
+            queue.tryDequeue(capacity + 1, Duration.INFINITE)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            queue.tryDequeue(capacity - capacity, Duration.INFINITE)
+        }
+    }
+
     // Producer threads related tests
     @Test
     fun `Producer thread should be blocked trying to enqueue a message in a full queue`() {

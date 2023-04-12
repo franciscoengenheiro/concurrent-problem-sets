@@ -1,8 +1,9 @@
 package pt.isel.pc.problemsets.set1
 
 import org.slf4j.LoggerFactory
-import pt.isel.pc.problemsets.sync.SimpleThreadPool
 import pt.isel.pc.problemsets.util.NodeLinkedList
+import java.util.concurrent.Callable
+import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -11,8 +12,11 @@ import kotlin.time.Duration
 /**
  * Thread pool with a dynamic number of worker threads, limited by [maxThreadPoolSize].
  * The worker threads are created on demand,
- * and are terminated if no work is available or the keep-alive time is exceeded.
- * To execute a work item, the [execute] method must be called.
+ * and are terminated if no work is available and the keep-alive time is exceeded.
+ * To execute a work item, two methods are available:
+ * - [execute] that receives a [Runnable].
+ * - [execute] that receives a [Callable] and returns a [Future].
+ *
  * The [shutdown] method can be used to prevent new work items from being accepted, but
  * previously submitted work items will still be executed.
  * To syncronize with the shutdown of the thread pool executor, the [awaitTermination] method
@@ -26,7 +30,6 @@ class ThreadPoolExecutor(
 ) {
     init {
         require(maxThreadPoolSize > 0) { "maxThreadPoolSize must be a natural number" }
-        require(keepAliveTime.inWholeMilliseconds > 0) { "keepAliveTime must be a positive duration" }
     }
 
     private val lock = ReentrantLock()
@@ -44,8 +47,17 @@ class ThreadPoolExecutor(
     private var inShutdown = false
 
     /**
+     * Executes the given [callable] in a worker thread inside the thread pool
+     * and returns a [Future] that serves as a representation of the pending result.
+     * @param callable the work item to be executed.
+     */
+    fun <T> execute(callable: Callable<T>): Future<T> {
+        TODO()
+    }
+
+    /**
      * Executes the given [workItem] in a worker thread inside the thread pool.
-     * @param workItem the work item to be executed
+     * @param workItem the work item to be executed.
      */
     fun execute(workItem: Runnable): Unit = lock.withLock {
         if (inShutdown) throw RejectedExecutionException("Thread pool executor is shutting down")
@@ -124,13 +136,23 @@ class ThreadPoolExecutor(
 
     /**
      * Represents a sum type for the result of the [getNextWorkItem] method.
-     * It can be either an [Exit] or a [WorkItem].
+     * It can be either an [Exit] or a [WorkItem]:
      * - The [Exit] result is used to indicate that the worker thread should be terminated.
-     * - The [WorkItem] result is used to indicate that the worker thread should execute the given work item.
+     * - The [WorkItem] result is used to indicate that the worker thread should execute the given work item
+     * and the given time allowed to be idle waiting for a new work item.
      */
     private sealed class GetWorkItemResult {
+        /**
+         * Represents the termination of a worker thread.
+         */
         object Exit : GetWorkItemResult()
-        class WorkItem(val workItem: Runnable) : GetWorkItemResult()
+
+        /**
+         * Represents a work item to be executed by a worker thread.
+         * @param workItem the work item to be executed by the worker thread.
+         * @param allowedIdleTime the maximum time that the worker thread can be idle before being terminated.
+         */
+        class WorkItem(val workItem: Runnable, val allowedIdleTime: Long) : GetWorkItemResult()
     }
 
     /**
@@ -145,12 +167,7 @@ class ThreadPoolExecutor(
         lock.withLock {
             // fast-path
             if (workItemsQueue.notEmpty) {
-                return GetWorkItemResult.WorkItem(workItemsQueue.pull().value)
-            }
-            // If timeout is 0, the worker thread should be terminated immediately
-            // and not wait for a work item to be placed in the queue
-            if (timeout == 0L) {
-                return GetWorkItemResult.Exit
+                return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, timeout)
             }
             // Terminate this worker thread if the thread pool is in shutdown mode
             // and there are no more work items in the queue
@@ -160,6 +177,11 @@ class ThreadPoolExecutor(
                 if (nOfWorkerThreads == 0) {
                     awaitTerminationCondition.signalAll()
                 }
+                return GetWorkItemResult.Exit
+            }
+            // If timeout is 0, the worker thread should be terminated immediately
+            // and not wait for a work item to be placed in the queue
+            if (timeout == 0L) {
                 return GetWorkItemResult.Exit
             }
             // wait-path
@@ -176,7 +198,7 @@ class ThreadPoolExecutor(
                 }
                 if (workItemsQueue.notEmpty) {
                     nOfWaitingWorkerThreads -= 1
-                    return GetWorkItemResult.WorkItem(workItemsQueue.pull().value)
+                    return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, remainingNanos)
                 }
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
@@ -207,42 +229,22 @@ class ThreadPoolExecutor(
         var currentRunnable: Runnable = firstRunnable
         var remainingNanos = keepAliveTime.inWholeNanoseconds
         while (true) {
-            val (executionTime, _) = measureElapsedTime {
-                safeRun(currentRunnable)
-            }
-            remainingNanos -= executionTime
-            val (retrievalTime, result) = measureElapsedTime {
-                getNextWorkItem(remainingNanos)
-            }
-            remainingNanos -= retrievalTime
-            if (remainingNanos <= 0) {
-                lock.withLock { nOfWorkerThreads -= 1 }
-                return
-            }
+            safeRun(currentRunnable)
+            val result = getNextWorkItem(remainingNanos)
             currentRunnable = when (result) {
-                is GetWorkItemResult.WorkItem -> result.workItem
+                is GetWorkItemResult.WorkItem -> {
+                    remainingNanos = result.allowedIdleTime
+                    result.workItem
+                }
                 GetWorkItemResult.Exit -> return
             }
         }
     }
 
-    /**
-     * Measures the elapsed time of the given [block] and returns a pair with the elapsed time
-     * in nanoseconds and the result of the [block].
-     * @param block the code to be executed.
-     * @return a pair with the elapsed time in nanoseconds and the result of the [block].
-     */
-    private inline fun <reified T> measureElapsedTime(block: () -> T): Pair<Long, T> {
-        val startTime = System.nanoTime()
-        val result = block()
-        val elapsedTime = System.nanoTime() - startTime
-        return elapsedTime to result
-    }
-
     private val logger = LoggerFactory.getLogger(ThreadPoolExecutor::class.java)
 
     /**
-     * Runs the given [runnable] and catches any exception that might be thrown.
+     * Runs the given [runnable] and catches any [Throwable] that might be thrown.
      * @param runnable the code to be executed.
      */
     private fun safeRun(runnable: Runnable) {
