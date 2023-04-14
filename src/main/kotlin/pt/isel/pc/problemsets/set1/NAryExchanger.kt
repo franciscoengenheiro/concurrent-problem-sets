@@ -34,9 +34,9 @@ class NAryExchanger<T>(private val groupSize: Int) {
     private var elementsAlreadyInGroup = 0
 
     /**
-     * Allows one thread to exchange values with other threads inside a group.
+     * Allows one thread to exchange values with other threads inside a thread group.
      * @param value the value that will be exchanged with the values brought by the other threads inside a group.
-     * @param timeout the maximum time that this thread is willing to wait for the group to be completed.
+     * @param timeout the maximum time that this thread is willing to wait for the exchange operation.
      * @return a list of values brought by all threads inside the group where this thread was inserted, including
      * the value brought by this it or null if the deadline is reached.
      * @throws InterruptedException if the current thread is interrupted while waiting for the group to be completed.
@@ -92,6 +92,8 @@ class NAryExchanger<T>(private val groupSize: Int) {
                     return localRequest.values.toList()
                 }
                 if (remainingNanos <= 0) {
+                    localRequest.values.remove(value)
+                    elementsAlreadyInGroup--
                     // Giving-up by timeout
                     return null
                 }

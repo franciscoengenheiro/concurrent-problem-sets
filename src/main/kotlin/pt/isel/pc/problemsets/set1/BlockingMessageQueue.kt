@@ -100,7 +100,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
                         // This thread cannot giveup since it's request was completed
-                        tryToCompleteConsumerRequests()
                         return true
                     }
                     // Giving-up by interruption, remove value from the producer requests queue
@@ -108,7 +107,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     throw e
                 }
                 if (localRequest.value.canEnqueue) {
-                    tryToCompleteConsumerRequests()
                     return true
                 }
                 if (remainingNanos <= 0) {
@@ -163,8 +161,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                         // Arm the interrupt flag in order to not lose the interruption request
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
-                        // This thread cannot giveup since it's request was completed
-                        tryToCompleteProducerRequests()
                         return localRequest.value.messages
                     }
                     // Giving-up by interruption, remove value from the queue
@@ -173,7 +169,6 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     throw e
                 }
                 if (localRequest.value.canDequeue) {
-                    tryToCompleteProducerRequests()
                     return localRequest.value.messages
                 }
                 if (remainingNanos <= 0) {
@@ -189,6 +184,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     /**
      * Tries to complete the consumer requests that can be completed.
      * A [ConsumerRequest] can be completed if the message queue has enough messages to satisfy the request.
+     * This method assumes that the lock is already acquired.
      */
     private fun tryToCompleteConsumerRequests() {
         // Check if Consumer requests can be completed
@@ -201,6 +197,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
      * Completes a [ConsumerRequest] request by dequeuing a set of messages from the message queue or by providing
      * a list of messages to be used to complete the request.
      * @param directMessages a list of messages to be used to complete the request.
+     * This method assumes that the lock is already acquired.
      * If null, the messages will be dequeued from the message queue.
      */
     private fun completeConsumerRequest(directMessages: List<T>? = null) {
@@ -212,6 +209,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
 
     /**
      * Tries to complete all [ProducerRequest] if there is any and the message queue is not full.
+     * This method assumes that the lock is already acquired.
      */
     private fun tryToCompleteProducerRequests() {
         while (producerRequestsQueue.notEmpty && messageQueue.count < capacity) {

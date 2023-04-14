@@ -1,6 +1,5 @@
 package pt.isel.pc.problemsets.set1
 
-import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.Callable
 import java.util.concurrent.Future
@@ -13,7 +12,8 @@ import kotlin.time.Duration
  * Thread pool with a dynamic number of worker threads, limited by [maxThreadPoolSize].
  * The worker threads are created on demand,
  * and are terminated if no work is available and the keep-alive idle time is exceeded.
- * To execute a work item, the [execute] method can be used.
+ * To execute a work item, the [execute] method can be used to submit a [Callable] and retrieve
+ * a [Future].
  * The [shutdown] method can be used to prevent new work items from being accepted, but
  * previously submitted work items will still be executed.
  * To syncronize with the shutdown of the thread pool executor, the [awaitTermination] method
@@ -21,7 +21,7 @@ import kotlin.time.Duration
  * @param maxThreadPoolSize the maximum number of worker threads inside the thread pool.
  * @param keepAliveTime maximum time that a worker thread can be idle before being terminated.
  */
-class ThreadPoolExecutor(
+class ThreadPoolExecutorWithFuture(
     private val maxThreadPoolSize: Int,
     private val keepAliveTime: Duration,
 ) {
@@ -31,8 +31,13 @@ class ThreadPoolExecutor(
 
     private val lock = ReentrantLock()
 
+    // each request represents the current state of a work item inside the thread pool
+    private class ExecutionRequest<T>(val callable: Callable<T>, val result: Promise<T> = Promise())
+
     // queue of work items to be executed by the worker threads
-    private val workItemsQueue = NodeLinkedList<Runnable>()
+    // * - Represents a wildcard type argument, and is commonly used the type
+    // of is unknown or not important.
+    private val requestQueue = NodeLinkedList<ExecutionRequest<*>>()
 
     // conditions
     private val awaitWorkItemCondition = lock.newCondition()
@@ -44,12 +49,14 @@ class ThreadPoolExecutor(
     private var inShutdown = false
 
     /**
-     * Executes the given [workItem] in a worker thread inside the thread pool.
-     * @param workItem the work item to be executed.
+     * Executes the given [callable] in a worker thread inside the thread pool
+     * and returns a [Future] implementation that serves as a representation of the pending result.
+     * @param callable the work item to be executed.
      */
-    fun execute(workItem: Runnable): Unit = lock.withLock {
+    fun <T> execute(callable: Callable<T>): Future<T> {
         if (inShutdown) throw RejectedExecutionException("Thread pool executor is shutting down")
-        putWorkItem(workItem)
+        val request = putWorkItem(callable)
+        return request.result
     }
 
     /**
@@ -103,24 +110,29 @@ class ThreadPoolExecutor(
      * This method should only be called inside a thread-safe environment.
      * Placing in the queue is done in this order of priority:
      * - If there is a waiting worker thread, the work item is given to that worker thread.
-     * - A new thread is created to execute the work item, if the maximum number of threads hasn't been reached.
+     * - A new thread is created to execute the work item if the maximum number of threads hasn't been reached.
      * - The work item is placed in the queue, and when a thread is available, it will be executed.
+     * @param workItem the work item to be executed.
+     * @return a [ExecutionRequest] that serves as a representation of the pending result.
      */
-    private fun putWorkItem(workItem: Runnable) {
+    private fun <T> putWorkItem(workItem: Callable<T>): ExecutionRequest<T> {
+        // Build a request object that will be used to represent the pending result
+        val request = ExecutionRequest(workItem)
         if (nOfWaitingWorkerThreads > 0) {
             // 1. Give the work item to a waiting worker thread that was already created
-            workItemsQueue.enqueue(workItem)
+            requestQueue.enqueue(request)
             awaitWorkItemCondition.signal()
         } else if (nOfWorkerThreads < maxThreadPoolSize) {
             // 2. If not possible, create a new worker thread
             nOfWorkerThreads += 1
             Thread {
-                workerLoop(workItem)
+                workerLoop(request)
             }.start()
         } else {
             // 3. Place the work item in the queue
-            workItemsQueue.enqueue(workItem)
+            requestQueue.enqueue(request)
         }
+        return request
     }
 
     /**
@@ -141,7 +153,7 @@ class ThreadPoolExecutor(
          * @param workItem the work item to be executed by the worker thread.
          * @param allowedIdleTime the maximum time that the worker thread can be idle before being terminated.
          */
-        class WorkItem(val workItem: Runnable, val allowedIdleTime: Long) : GetWorkItemResult()
+        class WorkItem<T>(val workItem: ExecutionRequest<T>, val allowedIdleTime: Long) : GetWorkItemResult()
     }
 
     /**
@@ -155,8 +167,8 @@ class ThreadPoolExecutor(
     private fun getNextWorkItem(timeout: Long): GetWorkItemResult {
         lock.withLock {
             // fast-path
-            if (workItemsQueue.notEmpty) {
-                return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, timeout)
+            if (requestQueue.notEmpty) {
+                return GetWorkItemResult.WorkItem(requestQueue.pull().value, timeout)
             }
             // Terminate this worker thread if the thread pool is in shutdown mode
             // and there are no more work items in the queue
@@ -185,9 +197,9 @@ class ThreadPoolExecutor(
                     nOfWorkerThreads -= 1
                     return GetWorkItemResult.Exit
                 }
-                if (workItemsQueue.notEmpty) {
+                if (requestQueue.notEmpty) {
                     nOfWaitingWorkerThreads -= 1
-                    return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, remainingNanos)
+                    return GetWorkItemResult.WorkItem(requestQueue.pull().value, remainingNanos)
                 }
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
@@ -209,39 +221,38 @@ class ThreadPoolExecutor(
     }
 
     /**
-     * Runs the given [firstRunnable] and then, in a loop, waits for a work item to be available and runs it.
+     * Runs the given [firstCallable] and then, in a loop, waits for a work item to be available and runs it.
      * The loop is terminated when the [getNextWorkItem] returns [GetWorkItemResult.Exit], which means that
      * there isn't any work item available for this worker thread, or the keep-alive time has exceeded.
-     * @param firstRunnable the first work item to be executed by this worker thread.
+     * @param firstCallable the first work item to be executed by this worker thread.
      */
-    private fun workerLoop(firstRunnable: Runnable) {
-        var currentRunnable: Runnable = firstRunnable
+    private fun <T> workerLoop(request: ExecutionRequest<T>) {
+        var currentRequest = request
         var remainingNanos = keepAliveTime.inWholeNanoseconds
         while (true) {
-            safeRun(currentRunnable)
+            safeRun(currentRequest)
             val result = getNextWorkItem(remainingNanos)
-            currentRunnable = when (result) {
-                is GetWorkItemResult.WorkItem -> {
+            currentRequest = when (result) {
+                is GetWorkItemResult.WorkItem<*> -> ({
                     remainingNanos = result.allowedIdleTime
                     result.workItem
-                }
+                }) as ExecutionRequest<T>
                 GetWorkItemResult.Exit -> return
             }
         }
     }
 
-    private val logger = LoggerFactory.getLogger(ThreadPoolExecutor::class.java)
-
     /**
-     * Runs the given [runnable] and catches any [Throwable] that might be thrown.
-     * @param runnable the code to be executed.
+     * With the given [request], executes the [Callable] and sets the result of this [ExecutionRequest] to
+     * the result of the [Callable] or with the exception thrown by the [Callable].
+     * @param request the [ExecutionRequest] to be executed.
      */
-    private fun safeRun(runnable: Runnable) {
+    private fun <T> safeRun(request: ExecutionRequest<T>) {
         try {
-            runnable.run()
+            val result = request.callable.call()
+            request.result.resolve(result)
         } catch (ex: Throwable) {
-            logger.warn("Unexpected exception while running work item, ignoring it")
-            // ignoring exception
+            request.result.reject(ex)
         }
     }
 }

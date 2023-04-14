@@ -6,7 +6,6 @@ import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
@@ -214,25 +213,21 @@ class ThreadPoolExecutorTests {
         val tasksToBeExecuted = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
         }.flatten().toSet()
-        val expectedBeforeShutdown = List(nOfThreads / 2) { threadId ->
-            List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
-        }.flatten().toSet()
         val tasksExecuted = ConcurrentLinkedQueue<ExchangedValue>()
         val tasksFailed = ConcurrentLinkedQueue<ExchangedValue>()
         val testHelper = MultiThreadTestHelper(10.seconds)
-        val taskCounter = AtomicInteger(0)
-        val semaphore = Semaphore(nOfAllowedRepetions * (nOfThreads / 2))
+        val delegatedTasks = AtomicInteger(0)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
             var repetionId = 0
             while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 try {
-                    semaphore.acquire()
                     executor.execute {
                         tasksExecuted.add(task)
-                        taskCounter.incrementAndGet()
-                        semaphore.release()
                     }
+                    // Ensure execute did not throw RejectedExecutionException
+                    // which means the task was delegated to the thread pool executor
+                    delegatedTasks.incrementAndGet()
                 } catch (e: RejectedExecutionException) {
                     // This exception is expected since the executor is shutdown
                     // and the thread is still trying to execute tasks
@@ -240,17 +235,12 @@ class ThreadPoolExecutorTests {
                 }
             }
         }
-        // Ensure half of the tasks are executed
-        while(taskCounter.get() < expectedBeforeShutdown.size) {
-            Thread.sleep(100)
-        }
-        semaphore.acquire(nOfAllowedRepetions * (nOfThreads / 2))
         executor.shutdown()
         testHelper.join()
+        assertTrue(tasksFailed.isNotEmpty())
+        assertEquals(tasksExecuted.size, delegatedTasks.get())
         assertTrue(executor.awaitTermination(Duration.INFINITE))
-        assertEquals(expectedBeforeShutdown.size, tasksExecuted.size)
         val allTasks = tasksExecuted.toSet().union(tasksFailed.toSet())
         assertEquals(tasksToBeExecuted, allTasks)
     }
-
 }
