@@ -2,25 +2,32 @@ package pt.isel.pc.problemsets.set1
 
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-class PromiseTests {
+internal class PromiseTests {
+
+    // tests without concurrency stress
     @Test
-    fun `Promise is not done nor cancelled when created`() {
+    fun `A promise is not done nor cancelled when created`() {
         val promise = Promise<String>()
         assertFalse(promise.isDone)
         assertFalse(promise.isCancelled)
     }
 
     @Test
-    fun `Promise is done and not cancelled when resolved and should retrieve the result`() {
+    fun `A promise is done when resolved and should retrieve the result`() {
         val value = "value"
         val promise = Promise<String>()
         promise.resolve(value)
@@ -30,7 +37,7 @@ class PromiseTests {
     }
 
     @Test
-    fun `Promise is done and not cancelled when rejected`() {
+    fun `A promise is done when rejected`() {
         val promise = Promise<String>()
         promise.reject(Exception())
         assertFalse(promise.isCancelled)
@@ -38,15 +45,25 @@ class PromiseTests {
     }
 
     @Test
-    fun `A promise should be able to be cancelled before resolving`() {
+    fun `A promise is done when cancelled`() {
         val promise = Promise<String>()
-        assertTrue(promise.cancel(true))
+        promise.cancel(true)
         assertTrue(promise.isCancelled)
         assertTrue(promise.isDone)
     }
 
     @Test
-    fun `Promise cannot be cancelled after it is resolved`() {
+    fun `A promise should be able to be cancelled before resolving`() {
+        val promise = Promise<String>()
+        assertTrue(promise.cancel(true))
+        promise.resolve("value")
+        assertFailsWith<CancellationException> {
+            promise.get()
+        }
+    }
+
+    @Test
+    fun `A promise cannot be cancelled after it is resolved`() {
         val value = "value"
         val promise = Promise<String>()
         promise.resolve(value)
@@ -66,7 +83,7 @@ class PromiseTests {
     }
 
     @Test
-    fun `TimeoutException should be thrown if the timeout exceed`() {
+    fun `A thread does not want to wait for the result of a promise`() {
         val promise = Promise<String>()
         assertFailsWith<TimeoutException> {
             promise.get(0, TimeUnit.MILLISECONDS)
@@ -74,13 +91,36 @@ class PromiseTests {
     }
 
     @Test
-    fun `A thread waiting for a promise is interrupted`() {
+    fun `TimeoutException should be thrown if the timeout exceed when waiting for a promise result`() {
+        val promise = Promise<String>()
+        val testHelper = MultiThreadTestHelper(5.seconds)
+        val timeout = 3000L
+        testHelper.createAndStartThread {
+            assertFailsWith<TimeoutException> {
+                promise.get(timeout, TimeUnit.MILLISECONDS)
+            }
+        }
+        // Make sure that the thread waiting exceeds the timeout
+        Thread.sleep(timeout + 1000)
+        promise.resolve("value")
+        testHelper.join()
+    }
+
+    @Test
+    fun `Nullable promise`() {
+        val promise = Promise<Int?>()
+        promise.resolve(null)
+        assertTrue(promise.isDone)
+        assertFalse(promise.isCancelled)
+        assertNull(promise.get())
+    }
+
+    @Test
+    fun `InterruptedException should be thrown if a thread waiting for the result is interrupted`() {
         val promise = Promise<String>()
         val testHelper = MultiThreadTestHelper(5.seconds)
         val th1 = testHelper.createAndStartThread {
-            assertFailsWith<InterruptedException> {
-                promise.get(Long.MAX_VALUE, TimeUnit.MILLISECONDS)
-            }
+            assertFailsWith<InterruptedException> { promise.get() }
         }
         // Make sure that the thread is waiting
         Thread.sleep(2000)
@@ -88,8 +128,25 @@ class PromiseTests {
         testHelper.join()
     }
 
+    // tests with concurrency stress
     @Test
-    fun `test promises together`() {
-        TODO("make an array of promises or something")
+    fun `All threads waiting for a promise result should be see it when its completed`() {
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        val promise = Promise<Int>()
+        val resolvedValue = 43
+        val nOfThreads = 100
+        val expectedValues = List(nOfThreads) { resolvedValue }
+        val retrievedValues: ConcurrentHashMap<Int, Int> = ConcurrentHashMap()
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWait ->
+            while(!willingToWait()) {
+                retrievedValues.computeIfAbsent(it) { _ -> promise.get() }
+            }
+        }
+        // Make sure that all threads are waiting
+        Thread.sleep(4000)
+        promise.resolve(resolvedValue)
+        testHelper.join()
+        assertEquals(expectedValues.size, retrievedValues.size)
+        assertEquals(expectedValues, retrievedValues.entries.map { it.value })
     }
 }

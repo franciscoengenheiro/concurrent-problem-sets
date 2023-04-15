@@ -19,7 +19,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-class BlockingMessageQueueTests {
+internal class BlockingMessageQueueTests {
 
     private val defaultMsg = "message"
     private fun randomNumber(capacity: Int) = (1..capacity).random()

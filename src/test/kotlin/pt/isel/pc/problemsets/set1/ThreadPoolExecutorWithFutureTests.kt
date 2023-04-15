@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-class ThreadPoolExecutorWithFutureTests {
+internal class ThreadPoolExecutorWithFutureTests {
     private val defaultTask = "task"
 
     // tests without concurrency stress:

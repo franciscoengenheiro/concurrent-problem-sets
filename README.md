@@ -9,6 +9,8 @@
   - [NAryExchanger](#naryexchanger)
   - [BlockinMessageQueue](#blockingmessagequeue)
   - [ThreadPoolExecutor](#threadpoolexecutor)
+  - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
+    - [Promise](#promise)
 
 ## Set1
 ### NAryExchanger
@@ -146,11 +148,9 @@ where a producer thread can complete a consumer request if it can be completed.
 - **Paths** - The thread can take two major paths when calling this method:
     - the *message queue* has at least `nOfMessages` messages, and the thread is the head of the *consumer requests queue*, the thread dequeues the messages and returns them (***fast-path***).
     - the *message queue* has less than `nOfMessages` messages, or the thread is not the head of the *consumer requests queue*, and as such, the thread passively awaits to be able to dequeue the messages (***wait-path***).
-
 - **Giving-up** - While waiting, a thread can *give-up* on the dequeue operation if:
     - the thread is interrupted while waiting for the queue to be not empty and throws an `InterruptedException`.
     - the thread willing-to-wait timeout expires and returns `null`.
-
 - **Additional notes**:
     - If a thread is interrupted but another thread completed this thread request to dequeue a set of messages, it will still return those messages, but will throw an `InterruptedException` if blocked again.
     - A thread that specifies a timeout of *zero* will not wait and will return `null` immediately if it did not dequeue the number of requested messages.
@@ -160,14 +160,10 @@ where a producer thread can complete a consumer request if it can be completed.
 This syncronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
 that allows outside threads to delegate the execution of a task to other threads - *worker threads* - that it manages.
 
-The thread pool has a static worker thread pool size,
-meaning that it has a maximum number of worker threads that can be created to execute received tasks.
-
-The worker threads are created lazily,
-and are kept alive for the specified time interval, after which they're terminated.
-
-The thread pool has a task bounded queue, which is a blocking queue that holds the tasks that are delegated to the thread pool. If a thread tries to execute a task when the thread pool is full,
-it will block until a thread is available to execute that task.
+The executor has a dynamic worker thread pool size from 0 to `maxThreadPoolSize`.
+The worker threads are created lazily, and as such, are created when absolutely necessary.
+If no work is delegated to the executor, the worker threads will be kept alive for a maximum of `keepAliveTime` before 
+being terminated.
 
 #### Public Interface
 ```kotlin
@@ -183,7 +179,7 @@ class ThreadPoolExecutor(
 }
 ```
 
-The following image shows how a task, that is delegated to a worker thread is executed within the thread pool.
+The following image shows how a task that is delegated to a worker thread is executed within the thread pool.
 
 | ![ThreadPoolExcecutor](src/main/resources/ThreadPoolExecutor.png) |
 |:-----------------------------------------------------------------:|
@@ -192,7 +188,7 @@ The following image shows how a task, that is delegated to a worker thread is ex
 #### Lifecycle
 The executor has a lifecycle that can be described by the following states:
 - **Execution** - the executor is accepting tasks to be executed. Outside threads can delegate tasks to the thread pool using the `execute` method.
-- **Shutdown** - the executor is not accepting tasks to be executed, but it's still executing the tasks that were already delegated to it, by the order they were delagated. This process is started by calling the `shutdown` method.
+- **Shutdown** - the executor is in shutdown mode, and as such, is not accepting tasks to be executed, but it's still executing the tasks that were already delegated to it. This process is started by calling the `shutdown` method.
 - **Termination** - the thread pool has finished the shutdown process and terminates. All tasks that were delegated to it prior to the shutdown process have been executed with success or failure. An outside thread can syncronize with this termination process by calling the `awaitTermination` method.
 
   | ![ThreadPool States](src/main/resources/ThreadPoolStates.png) |
@@ -200,7 +196,12 @@ The executor has a lifecycle that can be described by the following states:
   |                  *ThreadPoolExecutor states*                  |
 
 #### Style of syncronization:
-- No particular style of syncronization was used in this syncronizer. 
+- For this syncronizer the `Kernel-style` or `Delegation of execution` but without a representation of a formal `Request`. 
+- The delegation occurs when:
+  - The last thread to terminate is responsible to signal all the threads waiting for the executor to shut down.
+  - In the first and only effective call to `shutdown` method, the executor is responsible to signal all the threads waiting
+  for more tasks to be delegated to hemt that the executor is shutting down, and they should clear the queue of tasks and 
+  terminate if no more work is available.
   
 #### Normal execution:
 - A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.
@@ -208,4 +209,57 @@ The executor has a lifecycle that can be described by the following states:
 - A thread calls `awaitTermination` and awaits, for a time duration, for the thread pool to terminate.
 
 #### Conditions of execution:
-- TODO()
+`awaitTermination`:
+- **Paths** - The thread can take two major paths when calling this method:
+    - **fast-path** - the thread pool has already terminated, and as such, the thread returns `true`.
+    - **wait-path** - the thread pool has not terminated, and as such, the thread passively awaits for the thread pool to terminate.
+- **Giving-up** - While waiting, a thread can *give-up* on the executor shutdown operation if:
+    - the thread willing-to-wait timeout expires and returns `false`.
+- **Additional notes**:
+    - the thread is interrupted while waiting and throws an `InterruptedException`.
+    - A thread that specifies a timeout of *zero* will not wait for the executor to shut down and will return `false` immediately.
+
+### ThreadPoolExecutorWithFuture
+#### Description
+This syncronizer is similar to the previous [ThreadPoolExecutor](#threadpoolexecutor), but instead of 
+[Runnable](https://docs.oracle.com/javase/7/docs/api/java/lang/Runnable.html) tasks, 
+it accepts [Callable](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Callable.html) tasks
+that return a value or throw an exception.
+
+#### Public Interface
+```kotlin
+class ThreadPoolExecutorWithFuture(
+    private val maxThreadPoolSize: Int,
+    private val keepAliveTime: Duration,
+) {
+    fun <T> execute(callable: Callable<T>): Future<T>
+    fun shutdown()
+    @Throws(InterruptedException::class)
+    fun awaitTermination(timeout: Duration): Boolean
+}
+```
+
+### Promise
+In order to allow the outside threads to get the result of the task execution,
+the executor method of [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture) returns a 
+[Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) object.
+
+Instead of using already existing implementations,
+this executor uses its own implementation of the `Future` interface - a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise) -
+which provides a *Future* that is explicitly completed, and it can be resolved with a value, rejected with an exception or cancelled.
+
+#### Public Interface
+```kotlin
+class Promise<T> : Future<T> {
+    override fun cancel(mayInterruptIfRunning: Boolean): Boolean
+    override fun isCancelled(): Boolean
+    override fun isDone(): Boolean
+    @Throws(InterruptedException::class, CancellationException::class, ExecutionException::class)
+    override fun get(): T
+    @Throws(TimeoutException::class, InterruptedException::class, CancellationException::class, ExecutionException::class)
+    override fun get(timeout: Long, unit: TimeUnit): T
+    fun resolve(result: T)
+    fun reject(ex: Throwable)
+}
+```
+

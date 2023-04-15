@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-class ThreadPoolExecutorTests {
+internal class ThreadPoolExecutorTests {
     // tests without currency stress:
     @Test
     fun `Single thread pool executor should execute received tasks`() {

@@ -2,8 +2,6 @@ package pt.isel.pc.problemsets.set1
 
 import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.util.NodeLinkedList
-import java.util.concurrent.Callable
-import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -127,8 +125,9 @@ class ThreadPoolExecutor(
      * Represents a sum type for the result of the [getNextWorkItem] method.
      * It can be either an [Exit] or a [WorkItem]:
      * - The [Exit] result is used to indicate that the worker thread should be terminated.
-     * - The [WorkItem] result is used to indicate that the worker thread should execute the given work item
-     * and the given time allowed to be idle waiting for a new work item.
+     * - The [WorkItem] result is used to indicate that the worker thread should execute
+     * the given work item and the remaining idle time
+     * to wait for a new work item after.
      */
     private sealed class GetWorkItemResult {
         /**
@@ -138,10 +137,10 @@ class ThreadPoolExecutor(
 
         /**
          * Represents a work item to be executed by a worker thread.
-         * @param workItem the work item to be executed by the worker thread.
-         * @param allowedIdleTime the maximum time that the worker thread can be idle before being terminated.
+         * @param workItem the work item to be executed by a worker thread.
+         * @param remainingIdleTime the remaining time that a worker thread can be idle before being terminated.
          */
-        class WorkItem(val workItem: Runnable, val allowedIdleTime: Long) : GetWorkItemResult()
+        class WorkItem(val workItem: Runnable, val remainingIdleTime: Long) : GetWorkItemResult()
     }
 
     /**
@@ -222,7 +221,7 @@ class ThreadPoolExecutor(
             val result = getNextWorkItem(remainingNanos)
             currentRunnable = when (result) {
                 is GetWorkItemResult.WorkItem -> {
-                    remainingNanos = result.allowedIdleTime
+                    remainingNanos = result.remainingIdleTime
                     result.workItem
                 }
                 GetWorkItemResult.Exit -> return
@@ -230,18 +229,20 @@ class ThreadPoolExecutor(
         }
     }
 
-    private val logger = LoggerFactory.getLogger(ThreadPoolExecutor::class.java)
+    companion object {
+        private val logger = LoggerFactory.getLogger(ThreadPoolExecutor::class.java)
 
-    /**
-     * Runs the given [runnable] and catches any [Throwable] that might be thrown.
-     * @param runnable the code to be executed.
-     */
-    private fun safeRun(runnable: Runnable) {
-        try {
-            runnable.run()
-        } catch (ex: Throwable) {
-            logger.warn("Unexpected exception while running work item, ignoring it")
-            // ignoring exception
+        /**
+         * Runs the given [runnable] and catches any [Throwable] that might be thrown.
+         * @param runnable the code to be executed.
+         */
+        private fun safeRun(runnable: Runnable) {
+            try {
+                runnable.run()
+            } catch (ex: Throwable) {
+                logger.warn("Unexpected exception while running work item, ignoring it")
+                // ignoring exception
+            }
         }
     }
 }

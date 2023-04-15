@@ -13,7 +13,7 @@ object TimeoutHelper {
     fun noWait(timeout: Long): Boolean = timeout == 0L
 
     /**
-     * Calculates the deadline for a timeout with in the given [timeUnit].
+     * Calculates the deadline for a timeout from a given timeunit.
      * @param duration the duration of the timeout.
      * @param timeUnit the time unit of the [duration].
      * @returns the deadline in milliseconds.
@@ -32,7 +32,7 @@ object TimeoutHelper {
      * Calculates the remaining time to the deadline in milliseconds.
      * @param target the deadline in milliseconds.
      */
-    fun remaining(target: Long): Long = target - System.currentTimeMillis()
+    fun remainingUntil(target: Long): Long = target - System.currentTimeMillis()
 
     /**
      * Returns true if the remaining time is zero or negative.

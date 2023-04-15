@@ -27,6 +27,7 @@ class ThreadPoolExecutorWithFuture(
 ) {
     init {
         require(maxThreadPoolSize > 0) { "maxThreadPoolSize must be a natural number" }
+        require(keepAliveTime >= Duration.ZERO) { "keepAliveTime must be a positive duration" }
     }
 
     private val lock = ReentrantLock()
@@ -53,8 +54,7 @@ class ThreadPoolExecutorWithFuture(
      * and returns a [Future] implementation that serves as a representation of the pending result.
      * @param callable the work item to be executed.
      */
-    fun <T> execute(callable: Callable<T>): Future<T> {
-        if (inShutdown) throw RejectedExecutionException("Thread pool executor is shutting down")
+    fun <T> execute(callable: Callable<T>): Future<T> = lock.withLock {
         val request = putWorkItem(callable)
         return request.result
     }
@@ -118,19 +118,24 @@ class ThreadPoolExecutorWithFuture(
     private fun <T> putWorkItem(workItem: Callable<T>): ExecutionRequest<T> {
         // Build a request object that will be used to represent the pending result
         val request = ExecutionRequest(workItem)
-        if (nOfWaitingWorkerThreads > 0) {
-            // 1. Give the work item to a waiting worker thread that was already created
-            requestQueue.enqueue(request)
-            awaitWorkItemCondition.signal()
-        } else if (nOfWorkerThreads < maxThreadPoolSize) {
-            // 2. If not possible, create a new worker thread
-            nOfWorkerThreads += 1
-            Thread {
-                workerLoop(request)
-            }.start()
+        if (inShutdown) {
+            request.result.reject(
+                RejectedExecutionException("Thread pool is in shutdown mode and is not accepting new tasks"))
         } else {
-            // 3. Place the work item in the queue
-            requestQueue.enqueue(request)
+            if (nOfWaitingWorkerThreads > 0) {
+                // 1. Give the work item to a waiting worker thread that was already created
+                requestQueue.enqueue(request)
+                awaitWorkItemCondition.signal()
+            } else if (nOfWorkerThreads < maxThreadPoolSize) {
+                // 2. If not possible, create a new worker thread
+                nOfWorkerThreads += 1
+                Thread {
+                    workerLoop(request)
+                }.start()
+            } else {
+                // 3. Place the work item in the queue
+                requestQueue.enqueue(request)
+            }
         }
         return request
     }
@@ -139,8 +144,9 @@ class ThreadPoolExecutorWithFuture(
      * Represents a sum type for the result of the [getNextWorkItem] method.
      * It can be either an [Exit] or a [WorkItem]:
      * - The [Exit] result is used to indicate that the worker thread should be terminated.
-     * - The [WorkItem] result is used to indicate that the worker thread should execute the given work item
-     * and the given time allowed to be idle waiting for a new work item.
+     * - The [WorkItem] result is used to indicate that the worker thread should execute
+     * the given work item and the remaining idle time
+     * to wait for a new work item after.
      */
     private sealed class GetWorkItemResult {
         /**
@@ -150,10 +156,10 @@ class ThreadPoolExecutorWithFuture(
 
         /**
          * Represents a work item to be executed by a worker thread.
-         * @param workItem the work item to be executed by the worker thread.
-         * @param allowedIdleTime the maximum time that the worker thread can be idle before being terminated.
+         * @param workItem the execution request that contains the work item to be executed.
+         * @param remainingIdleTime the remaining time that a worker thread can be idle before being terminated.
          */
-        class WorkItem<T>(val workItem: ExecutionRequest<T>, val allowedIdleTime: Long) : GetWorkItemResult()
+        class WorkItem<T>(val workItem: ExecutionRequest<T>, val remainingIdleTime: Long) : GetWorkItemResult()
     }
 
     /**
@@ -234,7 +240,7 @@ class ThreadPoolExecutorWithFuture(
             val result = getNextWorkItem(remainingNanos)
             currentRequest = when (result) {
                 is GetWorkItemResult.WorkItem<*> -> ({
-                    remainingNanos = result.allowedIdleTime
+                    remainingNanos = result.remainingIdleTime
                     result.workItem
                 }) as ExecutionRequest<T>
                 GetWorkItemResult.Exit -> return
@@ -242,17 +248,19 @@ class ThreadPoolExecutorWithFuture(
         }
     }
 
-    /**
-     * With the given [request], executes the [Callable] and sets the result of this [ExecutionRequest] to
-     * the result of the [Callable] or with the exception thrown by the [Callable].
-     * @param request the [ExecutionRequest] to be executed.
-     */
-    private fun <T> safeRun(request: ExecutionRequest<T>) {
-        try {
-            val result = request.callable.call()
-            request.result.resolve(result)
-        } catch (ex: Throwable) {
-            request.result.reject(ex)
+    companion object {
+        /**
+         * With the given [request], executes the [Callable] and sets the result of this [ExecutionRequest] to
+         * the result of the [Callable] or with the exception thrown by the [Callable].
+         * @param request the [ExecutionRequest] to be executed.
+         */
+        private fun <T> safeRun(request: ExecutionRequest<T>) {
+            try {
+                val result = request.callable.call()
+                request.result.resolve(result)
+            } catch (ex: Throwable) {
+                request.result.reject(ex)
+            }
         }
     }
 }

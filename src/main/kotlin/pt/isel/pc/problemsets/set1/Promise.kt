@@ -1,7 +1,8 @@
 package pt.isel.pc.problemsets.set1
 
+import pt.isel.pc.problemsets.set1.Promise.State
 import pt.isel.pc.problemsets.util.TimeoutHelper
-import pt.isel.pc.problemsets.util.TimeoutHelper.remaining
+import pt.isel.pc.problemsets.util.TimeoutHelper.remainingUntil
 import pt.isel.pc.problemsets.util.TimeoutHelper.start
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
@@ -13,28 +14,48 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Represents the result of an asynchronous computation.
- * Methods are provided to check if the computation is complete, to wait for its completion, and to retrieve
- * the result of the computation.
- * The result can only be retrieved using method [get] (with or without *timeout*) when the computation has
- * completed, blocking if necessary until it is ready. Cancellation is performed by the [cancel] method.
- * Additional methods are provided to determine if the task completed normally or was cancelled,
- * with the [isDone] and [isCancelled] methods, respectively.
- * Once a computation has completed, the computation **cannot be** cancelled.
- * @param T the type of the value that will be returned by the [get] method.
+ * Provides a [Future] that is explicitly completed, and it can be resolved with a value, rejected with an
+ * exception or cancelled.
+ * This is an implementation of the
+ * [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
+ * pattern in Kotlin.
+ * All methods are thread-safe to ensure only one thread can access or alter the state of the promise at a given time.
+ * The promise is initially in the **Pending** [State], and it can be set to:
+ * - **Resolved** with the [resolve] method
+ * - **Rejected** with the [reject] method
+ * - **Cancelled** with the [cancel].
+ *
+ * Once the promise is in a completed state, it cannot be changed.
  */
 class Promise<T> : Future<T> {
-
-    private sealed class State {
-        object Pending : State()
-        class Resolved(val result: Any?) : State()
-        class Rejected(val exception: Throwable) : State()
-        object Cancelled : State()
-    }
 
     private var state: State = State.Pending
     private val lock: Lock = ReentrantLock()
     private val condition = lock.newCondition()
+
+    private sealed class State {
+        /**
+         * Represents the state where the computation is pending and has not yet produced a result.
+         */
+        object Pending : State()
+
+        /**
+         * Represents the state where the computation has successfully completed and produced a result.
+         * @param result the result of the computation.
+         */
+        class Resolved(val result: Any?) : State()
+
+        /**
+         * Represents the state where the computation has failed due to an exception.
+         * @param exception the exception that caused the computation to fail.
+         */
+        class Rejected(val exception: Throwable) : State()
+
+        /**
+         * Represents the state where the computation has been cancelled before it could be completed.
+         */
+        object Cancelled : State()
+    }
 
     /**
      * Attempts to cancel execution of this task. This attempt will fail if the task has already completed,
@@ -46,6 +67,8 @@ class Promise<T> : Future<T> {
      * Subsequent calls to [isCancelled] will always return true if this method returned true.
      * @param mayInterruptIfRunning true, if the thread executing this task should be interrupted,
      * otherwise, in-progress tasks are allowed to complete.
+     * In the current implementation, this parameter is ignored.
+     * @return false if the task could not be cancelled, typically because it has already completed normally.
      */
     override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
         lock.withLock {
@@ -61,14 +84,14 @@ class Promise<T> : Future<T> {
     /**
      * Returns true if this task was cancelled before it completed normally.
      */
-    override fun isCancelled(): Boolean = state is State.Cancelled
+    override fun isCancelled(): Boolean = lock.withLock { state is State.Cancelled }
 
     /**
      * Returns true if this task completed.
      * Completion may be due to normal termination, an exception, or cancellation.
      * In all of these cases, this method will return true.
      */
-    override fun isDone(): Boolean = state !is State.Pending
+    override fun isDone(): Boolean = lock.withLock { state !is State.Pending }
 
     /**
      * Waits as long as necessary for the computation to complete, and then retrieves its result.
@@ -81,7 +104,8 @@ class Promise<T> : Future<T> {
     override fun get(): T = get(Long.MAX_VALUE, TimeUnit.MILLISECONDS)
 
     /**
-     * Waits if necessary for at most the given time for the computation to complete, and then retrieves its result.
+     * Waits for at most the given time for the computation to complete, and then retrieves its result.
+     * The method uses [TimeoutHelper] to handle the timeout.
      * @param timeout the maximum time to wait.
      * @param unit the time unit of the timeout argument.
      * @throws TimeoutException if the timeout was exceeded.
@@ -93,19 +117,18 @@ class Promise<T> : Future<T> {
     @Throws(TimeoutException::class, InterruptedException::class, CancellationException::class, ExecutionException::class)
     override fun get(timeout: Long, unit: TimeUnit): T {
         lock.withLock {
-            // fast-path
-            // The value was already computed
+            // fast-path: the promise was already completed
             if (isDone) {
                 return evaluateCompletedState()
             }
-            // Do not wait if the task wasn't completed
+            // Do not wait if the promise wasn't completed
             if (TimeoutHelper.noWait(timeout)) {
                 throw TimeoutException()
             }
             // wait-path
             val deadline = start(timeout, unit)
-            var remaining = remaining(deadline)
-            while (state == State.Pending) {
+            var remaining = remainingUntil(deadline)
+            while (true) {
                 try {
                     condition.await(remaining, TimeUnit.MILLISECONDS)
                 } catch (e: InterruptedException) {
@@ -118,13 +141,15 @@ class Promise<T> : Future<T> {
                     // Giving-up by interruption
                     throw e
                 }
-                remaining = remaining(deadline)
+                if (isDone) {
+                    return evaluateCompletedState()
+                }
+                remaining = remainingUntil(deadline)
                 if (TimeoutHelper.isTimeout(remaining)) {
                     // Giving-up by timeout
                     throw TimeoutException()
                 }
             }
-            return evaluateCompletedState()
         }
     }
 
@@ -151,6 +176,8 @@ class Promise<T> : Future<T> {
     /**
      * Evaluates the current state of the task and returns the result
      * since it was marked as completed.
+     * This method should only be called when the task is in a completed state and in a
+     * thread-safe environment.
      * @throws CancellationException if the task was cancelled.
      * @throws ExecutionException if the task was aborted or cancelled.
      * @throws IllegalStateException if the task is still pending.
