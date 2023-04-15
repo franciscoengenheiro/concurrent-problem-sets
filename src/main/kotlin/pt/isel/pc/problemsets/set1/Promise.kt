@@ -18,12 +18,12 @@ import kotlin.concurrent.withLock
  * exception or cancelled.
  * This is an implementation of the
  * [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
- * pattern in Kotlin.
+ * pattern in Kotlin, using the Monitor synchronization style.
  * All methods are thread-safe to ensure only one thread can access or alter the state of the promise at a given time.
  * The promise is initially in the **Pending** [State], and it can be set to:
  * - **Resolved** with the [resolve] method
  * - **Rejected** with the [reject] method
- * - **Cancelled** with the [cancel].
+ * - **Cancelled** with the [cancel] method.
  *
  * Once the promise is in a completed state, it cannot be changed.
  */
@@ -40,7 +40,7 @@ class Promise<T> : Future<T> {
         object Pending : State()
 
         /**
-         * Represents the state where the computation has successfully completed and produced a result.
+         * Represents the state where the computation has successfully finished and produced a result.
          * @param result the result of the computation.
          */
         class Resolved(val result: Any?) : State()

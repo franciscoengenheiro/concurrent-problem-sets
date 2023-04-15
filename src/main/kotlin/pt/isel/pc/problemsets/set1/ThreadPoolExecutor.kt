@@ -8,13 +8,14 @@ import kotlin.concurrent.withLock
 import kotlin.time.Duration
 
 /**
- * Thread pool with a dynamic number of worker threads, limited by [maxThreadPoolSize].
+ * Thread pool with a dynamic number of worker threads, limited by [maxThreadPoolSize],
+ * using the Monitor synchronization style.
  * The worker threads are created on demand,
  * and are terminated if no work is available and the keep-alive idle time is exceeded.
  * To execute a work item, the [execute] method can be used.
  * The [shutdown] method can be used to prevent new work items from being accepted, but
  * previously submitted work items will still be executed.
- * To syncronize with the shutdown of the thread pool executor, the [awaitTermination] method
+ * To syncronize with the shutdown process, the [awaitTermination] method
  * can be used.
  * @param maxThreadPoolSize the maximum number of worker threads inside the thread pool.
  * @param keepAliveTime maximum time that a worker thread can be idle before being terminated.
@@ -54,8 +55,7 @@ class ThreadPoolExecutor(
      * Initiates an orderly shutdown in which previously submitted work items are executed,
      * but no new work items will be accepted.
      * This method awakes all worker threads that were waiting for
-     * work in order to ensure no worker threads is either terminated or
-     * executing the work item that was put in the queue after the shutdown was initiated.
+     * work in order to clear the queue of work items or to terminate.
      * Invocation has no additional effect if already shut down.
      */
     fun shutdown() = lock.withLock {
@@ -98,7 +98,6 @@ class ThreadPoolExecutor(
      * Places the given [workItem] in the queue of work items to be executed by a worker thread.
      * This method should only be called inside a thread-safe environment, since it checks and
      * alters the internal state of the thread pool.
-     * This method should only be called inside a thread-safe environment.
      * Placing in the queue is done in this order of priority:
      * - If there is a waiting worker thread, the work item is given to that worker thread.
      * - A new thread is created to execute the work item, if the maximum number of threads hasn't been reached.
@@ -127,7 +126,7 @@ class ThreadPoolExecutor(
      * - The [Exit] result is used to indicate that the worker thread should be terminated.
      * - The [WorkItem] result is used to indicate that the worker thread should execute
      * the given work item and the remaining idle time
-     * to wait for a new work item after.
+     * to wait for the next work item.
      */
     private sealed class GetWorkItemResult {
         /**
@@ -146,7 +145,9 @@ class ThreadPoolExecutor(
     /**
      * Returns the next work item to be executed by a worker thread.
      * If there's currently no work item in the queue, the worker thread will wait for a work item
-     * to be placed, or for the thread pool to be in *shutdown* mode.
+     * to be placed, with a maximum wait time of [timeout] nanoseconds,
+     * or until the thread pool is in shutdown mode.
+     * @param timeout the maximum time to wait for a work item to be placed in the queue.
      * @return [GetWorkItemResult.WorkItem] if there is a work item in the queue, or
      * [GetWorkItemResult.Exit] if the thread pool is in *shutdown* mode,
      * or the timeout is exceeded.

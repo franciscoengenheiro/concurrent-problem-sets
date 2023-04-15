@@ -11,8 +11,9 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Similar to a [ArrayBlockingQueue], this syncronizer supports the communication between multiple threads
- * or processes. An internal queue is used to store messages that are inserted by *producer threads* and extracted
- * by *consumer threads*. This queue orders elements in FIFO (*first-in-first-out*) order to avoid *thread starvation*.
+ * or processes, using the Kernel or Delegation of execution synchronization style. An internal queue is used to store
+ * messages that are inserted by *producer threads* and extracted by *consumer threads*.
+ * This queue orders elements in FIFO (*first-in-first-out*) order to avoid *thread starvation*.
  * The *head* of the queue is the element that has been on the queue the longest time and the *tail* of the queue
  * the element that has been on the queue the shortest time. New elements are inserted at the tail of the queue,
  * and the queue retrieval operations obtain elements at the head of the queue.
