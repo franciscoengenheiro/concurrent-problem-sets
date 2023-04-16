@@ -340,9 +340,7 @@ The promise has a lifecycle that can be described by the following states:
 Once the promise is resolved, rejected or cancelled, it cannot be altered.
 
 #### Style of synchronization
-- In this syncronizer, the `Monitor Style` was used to synchronize the threads that are interacting with the *Promise*.
-- If a thread alters, the internal state of syncronizer, is responsible to notify the other threads that are waiting 
-for that state to be altered. 
+- In this syncronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise is responsible to signal all threads that are waiting for that state to be altered.
 
 #### Normal execution:
 - A thread calls `cancel`, expecting the task to be cancelled.

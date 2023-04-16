@@ -1,5 +1,6 @@
 package pt.isel.pc.problemsets.set1
 
+import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
@@ -177,8 +178,26 @@ internal class ThreadPoolExecutorTests {
         testHelper.join()
     }
 
-    // tests with concurrency stress:
     @Test
+    fun `Await termination should return false if a thread waiting is timedout`() {
+        val executor = ThreadPoolExecutor(1, Duration.INFINITE)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        val nOfRunnables = 10
+        repeat(nOfRunnables) {
+            executor.execute {
+                // Simulate heavy computation
+                Thread.sleep(10000)
+            }
+        }
+        executor.shutdown()
+        testHelper.createAndStartThread {
+            assertFalse(executor.awaitTermination(1.seconds))
+        }
+        testHelper.join()
+    }
+
+    // tests with concurrency stress:
+    @RepeatedTest(5)
     fun `Executor should execute all tasks even with concurrency stress`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
         val nOfThreads = 24
@@ -205,11 +224,11 @@ internal class ThreadPoolExecutorTests {
         assertEquals(expected.flatten().toSet(), results.toSet())
     }
 
-    @Test
+    @RepeatedTest(5)
     fun `Executor should finish pending tasks after executor shutdown`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
-        val nOfThreads = 10
-        val nOfAllowedRepetions = 100
+        val nOfThreads = 24
+        val nOfAllowedRepetions = 10000
         val tasksToBeExecuted = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
         }.flatten().toSet()

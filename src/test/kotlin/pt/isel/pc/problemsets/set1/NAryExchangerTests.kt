@@ -1,5 +1,6 @@
 package pt.isel.pc.problemsets.set1
 
+import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import pt.isel.pc.problemsets.utils.ExchangedValue
@@ -110,7 +111,7 @@ internal class NAryExchangerTests {
     }
 
     // Tests with concurrency stress:
-    @Test
+    @RepeatedTest(5)
     fun `An arbitrary number of threads should be able to exchange values`() {
         val groupSize = 4
         val nOfThreads = 24
@@ -122,17 +123,15 @@ internal class NAryExchangerTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
             // This counter does not need to be thread safe since each thread will have its own counter
-            var counter = 0
+            var repetionId = 0
             // Each thread will exchange a value nOfRepetions times
             while (!willingToWaitTimeout()) {
-                val repetionId = counter
-                val value = ExchangedValue(threadId, repetionId)
+                val value = ExchangedValue(threadId, repetionId++)
                 // The exchange method will return null if the willingToWaitTimeout for this thread has expired
                 // and as such a break is needed to saving null values in the results' array
                 val result = exchanger.exchange(value, 1.seconds) ?: break
                 assertEquals(groupSize, result.size)
                 results[threadId][repetionId] = value
-                counter++
             }
         }
         // Wait for all threads to finish

@@ -74,7 +74,8 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 // which this producer thread can complete by delivering the message direclty.
                 completeConsumerRequest(listOf(message))
                 return true
-            } else if(producerRequestsQueue.empty && messageQueue.count < capacity) {
+            }
+            if (producerRequestsQueue.empty && messageQueue.count < capacity) {
                 // The thread that tries to enqueue a message can do it immediately because it
                 // is the first thread at the head of the producer requests queue
                 // and the message queue is not full
