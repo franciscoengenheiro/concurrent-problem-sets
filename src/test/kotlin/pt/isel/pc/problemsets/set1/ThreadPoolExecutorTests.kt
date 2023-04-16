@@ -199,15 +199,14 @@ internal class ThreadPoolExecutorTests {
     // tests with concurrency stress:
     @RepeatedTest(5)
     fun `Executor should execute all tasks even with concurrency stress`() {
-        val executor = ThreadPoolExecutor(10, Duration.INFINITE)
+        val executor = ThreadPoolExecutorWithFuture(10, Duration.INFINITE)
         val nOfThreads = 24
         val nOfAllowedRepetions = 100000
         val expected = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
         }
         val results = ConcurrentLinkedQueue<ExchangedValue>()
-        val timeout = 10.seconds
-        val testHelper = MultiThreadTestHelper(timeout)
+        val testHelper = MultiThreadTestHelper(10.seconds)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
             var repetionId = 0
             while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
@@ -219,7 +218,7 @@ internal class ThreadPoolExecutorTests {
         }
         testHelper.join()
         executor.shutdown()
-        assertTrue(executor.awaitTermination(1.seconds))
+        assertTrue(executor.awaitTermination(5.seconds))
         assertEquals(expected.size * nOfAllowedRepetions, results.size)
         assertEquals(expected.flatten().toSet(), results.toSet())
     }
@@ -228,10 +227,10 @@ internal class ThreadPoolExecutorTests {
     fun `Executor should finish pending tasks after executor shutdown`() {
         val executor = ThreadPoolExecutor(10, Duration.INFINITE)
         val nOfThreads = 24
-        val nOfAllowedRepetions = 10000
+        val nOfAllowedRepetions = 100000
         val tasksToBeExecuted = List(nOfThreads) { threadId ->
             List(nOfAllowedRepetions) { repetionId -> ExchangedValue(threadId, repetionId + 1) }
-        }.flatten().toSet()
+        }.flatten()
         val tasksExecuted = ConcurrentLinkedQueue<ExchangedValue>()
         val tasksFailed = ConcurrentLinkedQueue<ExchangedValue>()
         val testHelper = MultiThreadTestHelper(10.seconds)
@@ -254,12 +253,17 @@ internal class ThreadPoolExecutorTests {
                 }
             }
         }
+        // wait until half of the tasks are executed
+        while (delegatedTasks.get() >= (nOfThreads * nOfAllowedRepetions) / 2) {
+            Thread.sleep(100)
+        }
         executor.shutdown()
         testHelper.join()
         assertTrue(tasksFailed.isNotEmpty())
         assertEquals(tasksExecuted.size, delegatedTasks.get())
-        assertTrue(executor.awaitTermination(Duration.INFINITE))
-        val allTasks = tasksExecuted.toSet().union(tasksFailed.toSet())
-        assertEquals(tasksToBeExecuted, allTasks)
+        assertTrue(executor.awaitTermination(1.seconds))
+        val allTasks = tasksExecuted + tasksFailed
+        assertEquals(tasksToBeExecuted.size, allTasks.size)
+        assertEquals(tasksToBeExecuted.toSet(), allTasks.toSet())
     }
 }

@@ -126,10 +126,10 @@ internal class NAryExchangerTests {
             var repetionId = 0
             // Each thread will exchange a value nOfRepetions times
             while (!willingToWaitTimeout()) {
-                val value = ExchangedValue(threadId, repetionId++)
+                val value = ExchangedValue(threadId, ++repetionId)
                 // The exchange method will return null if the willingToWaitTimeout for this thread has expired
                 // and as such a break is needed to saving null values in the results' array
-                val result = exchanger.exchange(value, 1.seconds) ?: break
+                val result = exchanger.exchange(value, 1.seconds) ?: continue
                 assertEquals(groupSize, result.size)
                 results[threadId][repetionId] = value
             }

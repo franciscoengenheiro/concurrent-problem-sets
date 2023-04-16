@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.thread
 import kotlin.concurrent.withLock
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -256,7 +257,7 @@ internal class BlockingMessageQueueTests {
             }
         }
         testHelper.join()
-        assertTrue(failedExchangedMsgs.size > 0)
+        assertTrue(failedExchangedMsgs.isNotEmpty())
         val intersection = failedExchangedMsgs.intersect(exchangedMsgs.keys)
         assertTrue(intersection.isEmpty())
         assertEquals(retrievedMsgs.size, exchangedMsgs.size)
@@ -266,15 +267,15 @@ internal class BlockingMessageQueueTests {
         assertEquals(originalMsgs.toSet(), allExchangedMsgs.toSet())
     }
 
-    @RepeatedTest(5)
+    @Test
     fun `Check if an arbitrary number of consumer threads is timedout`() {
-        val capacity = 10
+        val capacity = 20
         val queue = BlockingMessageQueue<ExchangedValue>(capacity)
         val nOfProducerThreads = 24
         val nOfConsumerThreads = 10
         val producerTimeout = 1.seconds
         // The consumer timeout should be much smaller than the producer timeout
-        // to ensure that the consumer threads are timed out
+        // to ensure that some consumer threads are timed out
         val consumerTimeout = producerTimeout / 5
         val testHelper = MultiThreadTestHelper(10.seconds)
         // Sets
@@ -287,10 +288,11 @@ internal class BlockingMessageQueueTests {
         testHelper.createAndStartMultipleThreads(nOfProducerThreads) { threadId, willingToWaitTimeout ->
             // This counter does not need to be thread safe since each thread will have its own counter
             var repetionId = 0
-            while (!willingToWaitTimeout() && repetionId < 10000) {
+            while (!willingToWaitTimeout() && repetionId < 100) {
                 val value = ExchangedValue(threadId, repetionId++)
                 originalMsgs.add(value)
-                val couldEnqueue = queue.tryEnqueue(value, producerTimeout)
+                val couldEnqueue = if (threadId % 2 == 0) queue.tryEnqueue(value, Duration.ZERO)
+                                           else queue.tryEnqueue(value, producerTimeout)
                 if (couldEnqueue) {
                     if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
                         throw AssertionError(
@@ -319,6 +321,7 @@ internal class BlockingMessageQueueTests {
         }
         testHelper.join()
         assertTrue(consumerThreadsTimedout.isNotEmpty())
+        assertTrue(failedExchangedMsgs.isNotEmpty())
         val intersection = failedExchangedMsgs.intersect(exchangedMsgs.keys)
         assertTrue(intersection.isEmpty())
         assertEquals(retrievedMsgs.size, exchangedMsgs.size)

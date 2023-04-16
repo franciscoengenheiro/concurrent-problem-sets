@@ -6,6 +6,7 @@ import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.reflect.KClass
 import kotlin.time.Duration
 
 /**
@@ -32,14 +33,12 @@ class ThreadPoolExecutorWithFuture(
     private val lock = ReentrantLock()
 
     // each request represents a work item to be executed by a worker thread
-    private class ExecutionRequest<T>(
-        val callable: Callable<T>,
-        val result: Promise<T> = Promise()
+    class ExecutionRequest<R>(
+        val callable: Callable<R>,
+        val result: Promise<R> = Promise()
     )
 
-    // queue of work items to be executed by the worker threads
-    // * - Represents a wildcard type argument, and is commonly used the type
-    // of is unknown or not important, in this case it is equivalent to: out Any?
+    // queue of execution request to be executed by the worker threads
     private val requestQueue = NodeLinkedList<ExecutionRequest<*>>()
 
     // conditions
@@ -234,22 +233,21 @@ class ThreadPoolExecutorWithFuture(
      * there isn't any work item available for this worker thread, or the keep-alive time has exceeded.
      * @param firstRequest the first [ExecutionRequest] to be executed by this worker thread.
      */
-    private fun <T> workerLoop(firstRequest: ExecutionRequest<T>) {
+    private fun workerLoop(firstRequest: ExecutionRequest<*>) {
         var currentRequest = firstRequest
         var remainingNanos = keepAliveTime.inWholeNanoseconds
         while (true) {
             safeRun(currentRequest)
             val result = getNextWorkItem(remainingNanos)
             currentRequest = when (result) {
-                is GetWorkItemResult.WorkItem<*> -> ({
+                is GetWorkItemResult.WorkItem<*> -> {
                     remainingNanos = result.remainingIdleTime
                     result.workItem
-                }) as ExecutionRequest<T>
+                }
                 GetWorkItemResult.Exit -> return
             }
         }
     }
-
 
     /**
      * With the given [request], executes the [Callable] and sets the result of this [ExecutionRequest] to
