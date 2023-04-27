@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync
+package pt.isel.pc.problemsets.sync.`with-locks`
 
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock

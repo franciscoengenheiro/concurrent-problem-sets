@@ -1,12 +1,13 @@
 package pt.isel.pc.problemsets.set1
 
+import pt.isel.pc.problemsets.set1.ThreadPoolExecutorWithFuture.GetWorkItemResult.Exit
+import pt.isel.pc.problemsets.set1.ThreadPoolExecutorWithFuture.GetWorkItemResult.WorkItem
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.Callable
 import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-import kotlin.reflect.KClass
 import kotlin.time.Duration
 
 /**

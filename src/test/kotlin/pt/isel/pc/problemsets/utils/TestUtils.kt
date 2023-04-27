@@ -2,7 +2,6 @@ package pt.isel.pc.problemsets.utils
 
 import java.time.Instant
 import java.util.concurrent.TimeoutException
-import kotlin.math.abs
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -20,25 +19,4 @@ fun spinUntilTimedWait(th: Thread, timeout: Duration = 1.seconds) {
             throw TimeoutException("spinUntilTimedWait exceeded timeout")
         }
     }
-}
-
-/**
- * Checks if the values associated with each key in the map are key balanced,
- * which means each key has almost the same number of values associated with it has the other keys,
- * with a maximum difference of 5%.
- * An example of usage could be to assert if the insertion or the key values represented by this map occurred
- * in a FIFO (*First In First Out*) order.
- * @param map the map to check.
- * @return true if the values associated with each key in the map are key balanced, false otherwise.
- */
-fun <K, V> isBalanced(map: Map<K, List<V>>): Boolean {
-    val totalKeys = map.size
-    val totalValues = map.values.flatten().size
-    val avgNumberOfValuesPerKey = totalValues.toDouble() / totalKeys
-    for (listValues in map.values) {
-        if (abs(listValues.size - avgNumberOfValuesPerKey) > 0.05 * avgNumberOfValuesPerKey) {
-            return false
-        }
-    }
-    return true
 }

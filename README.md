@@ -333,8 +333,8 @@ The promise has a lifecycle that can be described by the following states:
 |                    *Promise states*                     |
 
 - **Pending** - the promise is pending and has not yet produced a result.
-- **Resolved** - the computation has finished successfully with the given value.
-- **Rejected** - the computation has failed due to an exception.
+- **Resolved** - the computation has completed successfully with the given value.
+- **Rejected** - the computation has completed with a failure due to an exception.
 - **Cancelled** - promise was cancelled before it could be completed.
 
 Once the promise is resolved, rejected or cancelled, it cannot be altered.

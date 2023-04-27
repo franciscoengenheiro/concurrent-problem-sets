@@ -2,7 +2,6 @@ package pt.isel.pc.problemsets.set1
 
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertTimeoutPreemptively
 import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import java.util.concurrent.Callable

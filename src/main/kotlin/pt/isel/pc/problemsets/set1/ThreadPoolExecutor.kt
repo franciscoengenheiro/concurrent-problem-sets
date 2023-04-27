@@ -1,6 +1,8 @@
 package pt.isel.pc.problemsets.set1
 
 import org.slf4j.LoggerFactory
+import pt.isel.pc.problemsets.set1.ThreadPoolExecutor.GetWorkItemResult.Exit
+import pt.isel.pc.problemsets.set1.ThreadPoolExecutor.GetWorkItemResult.WorkItem
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock

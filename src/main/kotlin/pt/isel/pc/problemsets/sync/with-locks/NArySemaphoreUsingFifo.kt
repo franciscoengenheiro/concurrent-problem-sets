@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync
+package pt.isel.pc.problemsets.sync.`with-locks`
 
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.locks.ReentrantLock

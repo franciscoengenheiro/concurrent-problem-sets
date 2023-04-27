@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync
+package pt.isel.pc.problemsets.sync.`with-locks`
 
 import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.util.NodeLinkedList

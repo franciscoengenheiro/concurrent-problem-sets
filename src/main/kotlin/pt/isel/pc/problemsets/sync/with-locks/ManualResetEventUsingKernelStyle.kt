@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync
+package pt.isel.pc.problemsets.sync.`with-locks`
 
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
@@ -9,7 +9,7 @@ import kotlin.time.Duration
  * Manual Reset Event using a kernel-style design.
  * - [currentRequest] is early allocated to make the algorithm simpler to understand.
  */
-class ManualResetEvent {
+class ManualResetEventUsingKernelStyle {
     private class Request(
         val condition: Condition,
         var isDone: Boolean = false
