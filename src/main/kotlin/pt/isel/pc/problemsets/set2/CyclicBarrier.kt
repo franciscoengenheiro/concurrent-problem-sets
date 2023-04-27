@@ -25,6 +25,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     private val triggerBarrierCondition: Condition = lock.newCondition()
 
     private class BarrierRequest(
+        var nOfThreadsWaiting: Int = 0,
         var wasBroken: Boolean = false,
         var wasResetted: Boolean = false
     )
@@ -61,7 +62,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
             throw BrokenBarrierException()
         // fast-path(2) - the thread that enters is the last thread to arrive and brokes the barrier
         // awaking all other threads
-        val indexOfArrival = parties - (nOfThreadsWaiting + 1)
+        val indexOfArrival = parties - (barrierRequest.nOfThreadsWaiting + 1)
         if (indexOfArrival == 0) {
             brakeBarrier()
             barrierRequest = BarrierRequest()
@@ -75,32 +76,33 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
         var remainingNanos: Long = timeout.inWholeNanoseconds
         val localBarrierRequest = barrierRequest
         // Another thread joins the await condition
-        nOfThreadsWaiting++
+        barrierRequest.nOfThreadsWaiting++
         while(true) {
             try {
                 remainingNanos = triggerBarrierCondition.awaitNanos(remainingNanos)
             } catch (ex: InterruptedException) {
-                nOfThreadsWaiting--
+                barrierRequest.nOfThreadsWaiting--
                 if (!localBarrierRequest.wasResetted) {
                     localBarrierRequest.wasResetted = true
                     brakeBarrier()
-                    throw InterruptedException()
+                    Thread.currentThread().interrupt()
                 } else {
                     throw BrokenBarrierException()
                 }
             }
             // Check if the barrier was resetted by another thread
             if (localBarrierRequest.wasResetted) {
-                nOfThreadsWaiting--
+                barrierRequest.nOfThreadsWaiting--
                 throw BrokenBarrierException()
             }
             // Check if another thread broke the barrier
             if (localBarrierRequest.wasBroken) {
-                nOfThreadsWaiting--
+                barrierRequest.nOfThreadsWaiting--
                 return indexOfArrival // (1..parties-1)
             }
             if (remainingNanos <= 0) {
-                nOfThreadsWaiting--
+                barrierRequest.nOfThreadsWaiting--
+                if (!barrierRequest.wasBroken) brakeBarrier()
                 // give-up by timeout
                 throw TimeoutException()
             }
@@ -115,15 +117,13 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      */
     private fun brakeBarrier() {
         barrierRequest.wasBroken = true
-        // TODO(is this necessary?")
-        nOfThreadsWaiting = parties
         triggerBarrierCondition.signalAll()
     }
 
     /**
      * Returns the number of parties currently waiting at the barrier.
      */
-    fun getNumberWaiting(): Int = lock.withLock { parties - nOfThreadsWaiting }
+    fun getNumberWaiting(): Int = lock.withLock { parties - barrierRequest.nOfThreadsWaiting }
 
     /**
      * Returns the number of parties required to trigger this barrier.
@@ -139,7 +139,10 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * Resets the barrier to its initial state.
      */
     fun reset() = lock.withLock {
+        // Can't reset a barrier that no thread is waiting for
+        if (barrierRequest.nOfThreadsWaiting == 0) return
         barrierRequest.wasResetted = true
+        brakeBarrier()
         barrierRequest = BarrierRequest()
     }
 }

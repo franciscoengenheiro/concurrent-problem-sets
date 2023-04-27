@@ -4,6 +4,7 @@ import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
+import pt.isel.pc.problemsets.utils.randomTo
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.test.assertEquals
@@ -19,11 +20,6 @@ import kotlin.time.Duration.Companion.seconds
 internal class BlockingMessageQueueTests {
 
     private val defaultMsg = "message"
-
-    /**
-     * Generates a random number between this [Int] and [end] (inclusive).
-     */
-    private infix fun Int.randomTo(end: Int) = (this..end).random()
 
     // tests without concurrency stress:
     @Test
