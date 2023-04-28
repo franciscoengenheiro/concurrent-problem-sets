@@ -9,7 +9,8 @@ import kotlin.time.Duration
 
 /**
  * A mechanism used to synchronize a group of threads to wait for each other to reach a specific
- * point before proceeding further. The barrier is *cyclic* in the sense that it can be reused again and again.
+ * point before proceeding further.
+ * The barrier is *cyclic* in the sense that it can be reused again and again.
  * @param parties the number of threads that will be synchronized by this barrier.
  * @param barrierAction the [Runnable] to execute when the last thread arrives at the barrier.
  * @throws IllegalArgumentException if [parties] is less than 1. Once created, it cannot be changed.
@@ -18,21 +19,21 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     constructor(parties: Int) : this(parties, null)
 
     init {
-        require(parties > 0) { "Group size cannot be less than 1" }
+        require(parties > 0) { "parties must be a natural number" }
     }
 
     private val lock = ReentrantLock()
-    private val triggerBarrierCondition: Condition = lock.newCondition()
+    private val barrierCondition: Condition = lock.newCondition()
 
+    // Internal state
+    private var barrierRequest = BarrierRequest()
+
+    // Represents a request to form a barrier
     private class BarrierRequest(
         var nOfThreadsWaiting: Int = 0,
         var wasBroken: Boolean = false,
-        var wasResetted: Boolean = false
+        var wasCompleted: Boolean = false
     )
-
-    // Internal state
-    private var nOfThreadsWaiting = parties
-    private var barrierRequest = BarrierRequest()
 
     /**
      * Waits until all parties have invoked await on this barrier.
@@ -57,73 +58,70 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      */
     @Throws(InterruptedException::class, TimeoutException::class, BrokenBarrierException::class)
     fun await(timeout: Duration): Int {
-        // fast-path(1) - the barrier was broken
-        if (barrierRequest.wasBroken)
-            throw BrokenBarrierException()
-        // fast-path(2) - the thread that enters is the last thread to arrive and brokes the barrier
-        // awaking all other threads
-        val indexOfArrival = parties - (barrierRequest.nOfThreadsWaiting + 1)
-        if (indexOfArrival == 0) {
-            brakeBarrier()
-            barrierRequest = BarrierRequest()
-            return indexOfArrival // 0
-        }
-        // fast-path(3) - The thread does not want to wait for the barrier to be broken
-        if (timeout == Duration.ZERO) {
-            throw TimeoutException()
-        }
-        // wait-path
-        var remainingNanos: Long = timeout.inWholeNanoseconds
-        val localBarrierRequest = barrierRequest
-        // Another thread joins the await condition
-        barrierRequest.nOfThreadsWaiting++
-        while(true) {
-            try {
-                remainingNanos = triggerBarrierCondition.awaitNanos(remainingNanos)
-            } catch (ex: InterruptedException) {
-                barrierRequest.nOfThreadsWaiting--
-                if (!localBarrierRequest.wasResetted) {
-                    localBarrierRequest.wasResetted = true
-                    brakeBarrier()
-                    Thread.currentThread().interrupt()
-                } else {
-                    throw BrokenBarrierException()
-                }
-            }
-            // Check if the barrier was resetted by another thread
-            if (localBarrierRequest.wasResetted) {
-                barrierRequest.nOfThreadsWaiting--
+        lock.withLock {
+            // fast-path(1) - the barrier was broken
+            if (barrierRequest.wasBroken)
                 throw BrokenBarrierException()
+            val indexOfArrival = parties - (barrierRequest.nOfThreadsWaiting + 1)
+            // fast-path(2) - the thread that enters is the last thread to arrive at an unbroken barrier
+            if (indexOfArrival == 0) {
+                barrierRequest.wasCompleted = true
+                executeBarrierAction()
+                barrierCondition.signalAll()
+                barrierRequest = BarrierRequest()
+                return indexOfArrival // 0
             }
-            // Check if another thread broke the barrier
-            if (localBarrierRequest.wasBroken) {
-                barrierRequest.nOfThreadsWaiting--
-                return indexOfArrival // (1..parties-1)
-            }
-            if (remainingNanos <= 0) {
-                barrierRequest.nOfThreadsWaiting--
-                if (!barrierRequest.wasBroken) brakeBarrier()
-                // give-up by timeout
+            // The thread does not want to wait for the barrier to be broken
+            if (timeout == Duration.ZERO) {
                 throw TimeoutException()
             }
+            // wait-path
+            var remainingNanos: Long = timeout.inWholeNanoseconds
+            val localBarrierRequest = barrierRequest
+            // another thread joins the await condition
+            barrierRequest.nOfThreadsWaiting++
+            while (true) {
+                try {
+                    remainingNanos = barrierCondition.awaitNanos(remainingNanos)
+                } catch (ex: InterruptedException) {
+                    if (localBarrierRequest.wasBroken) {
+                        throw BrokenBarrierException()
+                    } else if (localBarrierRequest.wasCompleted) {
+                        // the barrier was not broken but completed by another thread,
+                        // so the thread must return successfully while keeping the interrupt request alive
+                        Thread.currentThread().interrupt()
+                        return indexOfArrival // (1..parties-1)
+                    } else {
+                        // the barrier was not broken nor completed, so, since this thread was interrupted,
+                        // the barrier must be broken by this thread
+                        brakeBarrier()
+                        throw InterruptedException()
+                    }
+                }
+                // Check if the barrier was resetted by another thread
+                if (localBarrierRequest.wasBroken) {
+                    throw BrokenBarrierException()
+                }
+                // Check if another thread broke the barrier
+                if (localBarrierRequest.wasCompleted) {
+                    return indexOfArrival // (1..parties-1)
+                }
+                if (remainingNanos <= 0) {
+                    // give-up by timeout
+                    if (!barrierRequest.wasBroken)
+                    // the barrier was not broken nor completed, but this thread gave up, so the
+                    // barrier must be broken by this thread
+                        brakeBarrier()
+                    throw TimeoutException()
+                }
+            }
         }
-    }
-
-    /**
-     * Responsible for signalling all waiting threads, at this barrier, that it was broken by
-     * another thread.
-     * This method should only be called inside a thread-safe environment, since it checks and
-     * alters the internal state of the barrier.
-     */
-    private fun brakeBarrier() {
-        barrierRequest.wasBroken = true
-        triggerBarrierCondition.signalAll()
     }
 
     /**
      * Returns the number of parties currently waiting at the barrier.
      */
-    fun getNumberWaiting(): Int = lock.withLock { parties - barrierRequest.nOfThreadsWaiting }
+    fun getNumberWaiting(): Int = lock.withLock { barrierRequest.nOfThreadsWaiting }
 
     /**
      * Returns the number of parties required to trigger this barrier.
@@ -139,10 +137,38 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * Resets the barrier to its initial state.
      */
     fun reset() = lock.withLock {
-        // Can't reset a barrier that no thread is waiting for
+        // Can't reset a barrier that no thread is waiting for - reusing the same barrier
         if (barrierRequest.nOfThreadsWaiting == 0) return
-        barrierRequest.wasResetted = true
         brakeBarrier()
+        // create a new barrier request for the next barrier generation
         barrierRequest = BarrierRequest()
+    }
+
+    /**
+     * Executes the barrier action if it exists.
+     * If the barrier action throws a [Throwable], the barrier is immediately broken and
+     * all waiting threads are signaled.
+     * This method should only be called inside a thread-safe environment, since it checks and
+     * alters the internal state of the barrier.
+     */
+    private fun executeBarrierAction() {
+        barrierAction?.let {
+            runCatching {
+                it.run()
+            }.onFailure {
+                brakeBarrier()
+            }
+        }
+    }
+
+    /**
+     * Signals all waiting threads, at this barrier, that it was broken by
+     * another thread.
+     * This method should only be called inside a thread-safe environment, since it checks and
+     * alters the internal state of the barrier.
+     */
+    private fun brakeBarrier() {
+        barrierRequest.wasBroken = true
+        barrierCondition.signalAll()
     }
 }
