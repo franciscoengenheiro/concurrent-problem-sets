@@ -12,5 +12,9 @@ class UnsafeValue<T>(val value: T, private val initialLives: Int) {
     init {
         require(initialLives > 0) { "initial lives must be a natural number" }
     }
+
+    /**
+     * The current number of lives of this [value].
+     */
     val lives = AtomicInteger(initialLives)
 }

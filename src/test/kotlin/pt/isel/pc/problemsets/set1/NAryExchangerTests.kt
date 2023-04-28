@@ -121,13 +121,13 @@ internal class NAryExchangerTests {
         // nOfRepetion is the n of rows and nOfThreads is n of the columns
         val results = Array(nOfThreads) { Array(nOfRepetions) { ExchangedValue.Empty } }
         val testHelper = MultiThreadTestHelper(10.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, isTestFinished ->
             // This counter does not need to be thread safe since each thread will have its own counter
             var repetionId = 0
             // Each thread will exchange a value nOfRepetions times
-            while (!willingToWaitTimeout()) {
+            while (!isTestFinished()) {
                 val value = ExchangedValue(threadId, ++repetionId)
-                // The exchange method will return null if the willingToWaitTimeout for this thread has expired
+                // The exchange method will return null if the isTestFinished for this thread has expired
                 // and as such a break is needed to saving null values in the results' array
                 val result = exchanger.exchange(value, 1.seconds) ?: continue
                 assertEquals(groupSize, result.size)

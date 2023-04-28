@@ -5,18 +5,12 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * A thread-safe container that allows multiple threads to consume its values using the [consume] method.
  * The container is initialized with a set [UnsafeValue]s, each with a number of lives, that represents the number of times
- * that value can be consumed.
+ * that value can be consumed by a thread.
  * @param T the type of the values to be consumed.
  * @param values an array of [UnsafeValue]s.
  * @throws IllegalArgumentException if [values] is empty.
  */
 class ThreadSafeContainer<T>(private val values: Array<UnsafeValue<T>>) {
-    init {
-        require(values.isNotEmpty()) { "values must not be empty" }
-    }
-    // TODO("remember to use volatile and atomic reference if needed")
-    // TODO("also remember that atomic ref is less efficient")
-    // TODO("Reminder: volatile does not garantee atomicity but atomic ref does")
     private val index = AtomicInteger(0)
 
     /**
@@ -25,46 +19,40 @@ class ThreadSafeContainer<T>(private val values: Array<UnsafeValue<T>>) {
      */
     fun consume(): T? {
         val firstObservedIndex = index.get()
-        // fast-path -> There are no more values to be consumed
+        // fast-path -> there are no more values to be consumed
         if (firstObservedIndex == values.size) return null
-        // retry-path -> Retrive a value or retry if not possible
+        // retry-path -> retrive an index or retry if not possible
         do {
-            // observe the current value of the index and check
-            // if there are more values to consume
-            val observedIndex = index.get()
-            if (observedIndex in values.indices) { // 0..values.size
-                val unsafeValue = values[observedIndex]
-                // TODO("decrement life and return the value if possible")
+            val outerObservedIndex = index.get()
+            // if there are more UnsafeValues to be consumed:
+            if (outerObservedIndex in values.indices) {
+                // retry-path -> decrement the number of lives or retry if not possible
                 while (true) {
+                    val unsafeValue = values[outerObservedIndex]
                     val observedLives = unsafeValue.lives.get()
+                    println(Thread.currentThread().name + " - " + observedLives + " lives in " + index.get() + " index")
+                    // create a request to decrement the number of lives or break immediately if not possible
                     val nextLives = if (observedLives > 0) observedLives - 1 else break
-                    if (unsafeValue.lives.compareAndSet(observedLives, nextLives))
+                    // try to decrement it if observed lives value is still the same value that
+                    // is inside the atomic reference
+                    if (unsafeValue.lives.compareAndSet(observedLives, nextLives)) {
+                        println(Thread.currentThread().name + " - " + "decremented to " + nextLives)
+                        // if the decrement was successful, return the value
                         return unsafeValue.value
                     }
+                    // retry
+                }
             }
-            // observe the current index value again
-            val observedIndexInOrderToIncrement = index.get()
-            // TODO("increment index by 1 if possible")
-            val nextIndex = if (observedIndexInOrderToIncrement < values.size) observedIndexInOrderToIncrement + 1 else break
-            // try to increment it if observed index value is still the same value that
+            // observe the current index value again since it might have been changed
+            val secondOuterObservedIndex = index.get()
+            // create a request to increment the index value or break immediately if not possible
+            val nextIndex = if (secondOuterObservedIndex < values.size) secondOuterObservedIndex + 1 else break
+            // try to increment it if the observed index value is still the same value that
             // is inside the atomic reference
-            index.compareAndSet(observedIndexInOrderToIncrement, nextIndex)
+            index.compareAndSet(secondOuterObservedIndex, nextIndex)
             // retry
         } while (true)
+        println(Thread.currentThread().name + " - " + "no more values")
         return null
-        /**
-        // can't read this value needs to be observed first
-        while(index < values.size) {
-            // can't read this value needs to be observed first
-            if (values[index].lives > 0) {
-                // can't read this value needs to be observed first
-                values[index].lives -= 1
-                // can't read this value needs to be observed first
-                return values[index].value
-            }
-            // can't read this value needs to be observed first
-            index += 1
-        }
-        **/
     }
 }

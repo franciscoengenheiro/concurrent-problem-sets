@@ -47,9 +47,9 @@ class Promise<T> : Future<T> {
 
         /**
          * Represents the state where the computation has failed due to an exception.
-         * @param exception the exception that caused the computation to fail.
+         * @param throwable the throwable that caused the computation to fail.
          */
-        class Rejected(val exception: Throwable) : State()
+        class Rejected(val throwable: Throwable) : State()
 
         /**
          * Represents the state where the computation has been cancelled before it could be completed.
@@ -186,8 +186,8 @@ class Promise<T> : Future<T> {
     @Throws(CancellationException::class, ExecutionException::class, IllegalStateException::class)
     private fun evaluateCompletedState() = when (val currentState = state) {
         is State.Resolved -> currentState.result as T
-        is State.Rejected -> throw ExecutionException(currentState.exception)
+        is State.Rejected -> throw ExecutionException(currentState.throwable)
         is State.Cancelled -> throw CancellationException()
-        is State.Pending -> throw IllegalStateException("Unexpected state: $currentState")
+        is State.Pending -> throw IllegalStateException("Illegal state: $currentState")
     }
 }

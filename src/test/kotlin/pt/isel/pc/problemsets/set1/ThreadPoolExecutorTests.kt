@@ -207,9 +207,9 @@ internal class ThreadPoolExecutorTests {
         }
         val results = ConcurrentLinkedQueue<ExchangedValue>()
         val testHelper = MultiThreadTestHelper(10.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 executor.execute {
                     results.add(task)
@@ -235,9 +235,9 @@ internal class ThreadPoolExecutorTests {
         val tasksFailed = ConcurrentLinkedQueue<ExchangedValue>()
         val testHelper = MultiThreadTestHelper(10.seconds)
         val delegatedTasks = AtomicInteger(0)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 try {
                     executor.execute {

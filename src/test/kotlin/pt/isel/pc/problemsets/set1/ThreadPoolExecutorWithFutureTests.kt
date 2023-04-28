@@ -112,8 +112,8 @@ internal class ThreadPoolExecutorWithFutureTests {
             ExchangedValue(1, 2) // A complex type example
         )
         val testHelper = MultiThreadTestHelper(10.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { _, willingToWaitTimeout ->
-            while (!willingToWaitTimeout()) {
+        testHelper.createAndStartMultipleThreads(nOfThreads) { _, isTestFinished ->
+            while (!isTestFinished()) {
                 val type = typesList.random()
                 val typeClass = type::class.javaObjectType
                 val future = executor.execute { type }
@@ -136,9 +136,9 @@ internal class ThreadPoolExecutorWithFutureTests {
         val delegatedTasks = ConcurrentLinkedQueue<ExchangedValue>()
         val executedTasks = ConcurrentLinkedQueue<Future<ExchangedValue>>()
         val testHelper = MultiThreadTestHelper(10.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 val future = executor.execute {
                     delegatedTasks.add(task)
@@ -175,9 +175,9 @@ internal class ThreadPoolExecutorWithFutureTests {
         val tasksFailed = ConcurrentLinkedQueue<ExchangedValue>()
         val delegatedTasksCounter = AtomicInteger(0)
         val testHelper = MultiThreadTestHelper(10.seconds)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!willingToWaitTimeout() && repetionId < nOfAllowedRepetions) {
+            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 val future = executor.execute { task }
                 try {

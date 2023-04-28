@@ -189,15 +189,17 @@ represents is the same as all other *Producer Thread* requests.
 This syncronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
 that allows outside threads to delegate the execution of a task to other threads - *worker threads* - that it manages.
 
-The executor has a dynamic worker thread pool size from 0 to `maxThreadPoolSize`.
-The worker threads are created lazily, and as such, only when a task is delegated to the executor, 
-there are no available worker threads and the maximum pool size has not been reached. 
+The executor has a dynamic worker thread pool size from `0` to `maxThreadPoolSize`.
+The worker threads are created lazily,
+and as such,
+only when a task is delegated to the executor
+and there are no available worker threads and the maximum pool size has not been reached, only then a new worker thread is created.
 
 The tasks are executed using the 
 [Runnable](https://docs.oracle.com/javase/7/docs/api/java/lang/Runnable.html) interface,
 and as such, the executor does not return any value to the caller.
 If no work is delegated to the executor, the worker threads will be kept alive, waiting for work, for a maximum of 
-`keepAliveTime` before being terminated.
+`keepAliveTime` before being terminated and removed from the pool by the executor.
 
 #### Public interface
 ```kotlin
@@ -337,10 +339,10 @@ The promise has a lifecycle that can be described by the following states:
 - **Rejected** - the computation has completed with a failure due to an exception.
 - **Cancelled** - promise was cancelled before it could be completed.
 
-Once the promise is resolved, rejected or cancelled, it cannot be altered.
+Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
 #### Style of synchronization
-- In this syncronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise is responsible to signal all threads that are waiting for that state to be altered.
+- In this syncronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise is responsible to signal all threads that are waiting for that state to be altered for them to evaluate the state of the promise and act accordingly.
 
 #### Normal execution:
 - A thread calls `cancel`, expecting the task to be cancelled.

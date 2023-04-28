@@ -82,7 +82,7 @@ class MultiThreadTestHelper(
      * It also registers the threads so that they can be joined later.
      * See [join].
      * @param nOfThreads the number of threads to be created.
-     * @param block the code to be executed by each thread.
+     * @param block the [TestFunction] to be executed by each thread.
      */
     fun createAndStartMultipleThreads(nOfThreads: Int, block: TestFunction) =
         repeat(nOfThreads) { createAndStart(it, block) }

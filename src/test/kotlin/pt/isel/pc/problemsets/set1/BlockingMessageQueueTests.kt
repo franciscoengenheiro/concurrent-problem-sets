@@ -222,10 +222,10 @@ internal class BlockingMessageQueueTests {
         val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
         val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val failedExchangedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
-        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, isTestFinished ->
             // This counter does not need to be thread safe since each thread will have its own counter
             var repetionId = 0
-            while (!willingToWaitTimeout() && repetionId < 10000) {
+            while (!isTestFinished() && repetionId < 10000) {
                 val value = ExchangedValue(threadId, repetionId++)
                 originalMsgs.add(value)
                 val couldEnqueue = queue.tryEnqueue(value, Duration.ZERO)
@@ -240,8 +240,8 @@ internal class BlockingMessageQueueTests {
                 }
             }
         }
-        testHelper.createAndStartMultipleThreads(nOfThreads) { _, willingToWaitTimeout ->
-            while (!willingToWaitTimeout()) {
+        testHelper.createAndStartMultipleThreads(nOfThreads) { _, isTestFinished ->
+            while (!isTestFinished()) {
                 val result= queue.tryDequeue(
                     1 randomTo capacity, (100 randomTo 500).milliseconds)
                 if (result != null) retrievedMsgs.addAll(result)
@@ -276,10 +276,10 @@ internal class BlockingMessageQueueTests {
         val failedExchangedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val consumerThreadsTimedout = ConcurrentLinkedQueue<Int>()
         // Create producer threads
-        testHelper.createAndStartMultipleThreads(nOfProducerThreads) { threadId, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfProducerThreads) { threadId, isTestFinished ->
             // This counter does not need to be thread safe since each thread will have its own counter
             var repetionId = 0
-            while (!willingToWaitTimeout() && repetionId < 100) {
+            while (!isTestFinished() && repetionId < 100) {
                 val value = ExchangedValue(threadId, repetionId++)
                 originalMsgs.add(value)
                 val couldEnqueue = if (threadId % 2 == 0) queue.tryEnqueue(value, Duration.ZERO)
@@ -298,8 +298,8 @@ internal class BlockingMessageQueueTests {
             }
         }
         // Create consumer threads with smaller timeout
-        testHelper.createAndStartMultipleThreads(nOfConsumerThreads) { threadId, willingToWaitTimeout ->
-            while (!willingToWaitTimeout()) {
+        testHelper.createAndStartMultipleThreads(nOfConsumerThreads) { threadId, isTestFinished ->
+            while (!isTestFinished()) {
                 val result = queue.tryDequeue(1 randomTo capacity, consumerTimeout)
                 if (result != null) {
                     retrievedMsgs.addAll(result)
@@ -333,10 +333,10 @@ internal class BlockingMessageQueueTests {
         // Pair<ThreadId, RepetitionId>
         val exchangedMsgs = ConcurrentHashMap<Int, Int>()
         exchangedMsgs.putAll(threadsIdsList)
-        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, willingToWaitTimeout ->
+        testHelper.createAndStartMultipleThreads(nOfThreads) { threadId, isTestFinished ->
             // This counter does not need to be thread safe since each thread will have its own counter
             var repetionId = 0
-            while (!willingToWaitTimeout()) {
+            while (!isTestFinished()) {
                 val value = ExchangedValue(threadId, repetionId++)
                 val couldEnqueue = queue.tryEnqueue(value, (500 randomTo 1000).milliseconds)
                 if (couldEnqueue) {
@@ -349,8 +349,8 @@ internal class BlockingMessageQueueTests {
                 }
             }
         }
-        testHelper.createAndStartMultipleThreads(1) { _, willingToWaitTimeout ->
-            while (!willingToWaitTimeout()) {
+        testHelper.createAndStartMultipleThreads(1) { _, isTestFinished ->
+            while (!isTestFinished()) {
                 queue.tryDequeue(1 randomTo capacity, Duration.ZERO)
             }
         }
