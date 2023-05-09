@@ -5,40 +5,55 @@ import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.randomTo
 import java.util.concurrent.BrokenBarrierException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeoutException
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.INFINITE
 import kotlin.time.Duration.Companion.seconds
 
 class CyclicBarrierTests {
 
+    // tests without concurrency stress
     private data class SimpleTask(var done: Boolean = false)
 
     @Test
     fun `A barrier with no parties should throw an exception`() {
         assertFailsWith<IllegalArgumentException> {
-            CyclicBarrier(0)
+            CyclicBarrier(1)
         }
     }
 
     @Test
-    fun `A barrier with one thread should not block`() {
-        val barrier = CyclicBarrier(1)
-        assertEquals(1, barrier.getParties())
-        assertEquals(0, barrier.getNumberWaiting())
+    fun `Check if indexes of arrival match the order of which the threads entered the barrier`() {
+        val barrier = CyclicBarrier(2)
+        val testHelper = MultiThreadTestHelper(30.seconds)
+        assertEquals(2, barrier.getParties())
         assertFalse(barrier.isBroken())
-        assertEquals(0, barrier.await(Duration.ZERO))
+        testHelper.createAndStartThread { // th1
+            assertEquals(0, barrier.getNumberWaiting())
+            assertEquals(1, barrier.await(INFINITE))
+        }
+        // ensure that th1 is waiting first
+        Thread.sleep(2000)
+        testHelper.createAndStartThread { // th2
+            assertEquals(1, barrier.getNumberWaiting())
+            assertEquals(0, barrier.await(INFINITE))
+        }
+        assertFalse(barrier.isBroken())
+        testHelper.join()
     }
 
     @Test
-    fun `A barrier with one thread should not block and execute the Runnable`() {
+    fun `A barrier should execute a runnable`() {
+        val parties = 2
         val task = SimpleTask()
-        val barrier = CyclicBarrier(1, Runnable { task.done = true })
-        assertEquals(1, barrier.getParties())
+        val barrier = CyclicBarrier(parties) { task.done = true }
+        assertEquals(parties, barrier.getParties())
         assertEquals(0, barrier.getNumberWaiting())
         assertFalse(barrier.isBroken())
         assertFalse { task.done }
@@ -47,11 +62,13 @@ class CyclicBarrierTests {
     }
 
     @Test
-    fun `A thread that specifies no timeout and does not complete the barrier throws TimeoutException`() {
+    fun `A thread that specifies no timeout and does not complete the barrier throws TimeoutException and breaks the barrier`() {
         val barrier = CyclicBarrier(2)
+        assertFalse(barrier.isBroken())
         assertFailsWith<TimeoutException> {
             barrier.await(Duration.ZERO)
         }
+        assertTrue(barrier.isBroken())
     }
 
     @Test
@@ -70,7 +87,7 @@ class CyclicBarrierTests {
     }
 
     @Test
-    fun `A thread that is interrupted on non broken barrier throws InterruptedException`() {
+    fun `A thread that is interrupted on a non-broken barrier throws InterruptedException`() {
         val barrier = CyclicBarrier(2)
         assertFalse(barrier.isBroken())
         val testHelper = MultiThreadTestHelper(10.seconds)
@@ -85,75 +102,62 @@ class CyclicBarrierTests {
         assertTrue(barrier.isBroken())
     }
 
+    @Test
+    fun `Reset a barrier with no threads waiting`() {
+        val barrier = CyclicBarrier(2)
+        assertFalse(barrier.isBroken())
+        // reset the barrier
+        barrier.reset()
+        // ensure a new generation was created
+        assertFalse(barrier.isBroken())
+    }
+
     @RepeatedTest(3)
-    fun `All threads that are interrupted on a broken barrier throw BrokenBarrierException except the first`() {
-        val nOfThreads = 10 randomTo 30
-        val barrier = CyclicBarrier(nOfThreads)
+    fun `Reset a barrier with one thread waiting`() {
+        val barrier = CyclicBarrier(2)
         assertFalse(barrier.isBroken())
         val testHelper = MultiThreadTestHelper(10.seconds)
-        val th1 = testHelper.createAndStartThread {
-            assertFailsWith<InterruptedException> {
-                barrier.await()
-            }
-        }
-        testHelper.createAndStartMultipleThreads(nOfThreads - 1) { _, _ ->
+        testHelper.createAndStartThread {
             assertFailsWith<BrokenBarrierException> {
                 barrier.await()
             }
         }
-        // break the barrier
-        th1.interrupt()
+        // Ensure the first thread is waitng at the barrier
+        Thread.sleep(1000)
+        // reset the barrier
+        barrier.reset()
         testHelper.join()
-        assertTrue(barrier.isBroken())
-    }
-
-    @RepeatedTest(1)
-    fun `A thread that is interrupted on non broken barrier which was completed do not throw exception`() {
-        /* NOTE: There's a chance that this test fails due to the fact
-         * that the interruption request of the first thread does not come
-         * after the second thread completion of the barrier -
-         * which is the intended behaviour to test here.
-         * Because of that fact, the test is repeated several times and ensures a success rate
-         * of at least 99% or else it fails.
-         */
-        var assertionFailure = 0
-        var successCounter = 0
-        val repetions = 100
-        repeat(repetions) {
-            runCatching {
-                val nOfThreads = 2
-                val barrier = CyclicBarrier(nOfThreads)
-                assertFalse(barrier.isBroken())
-                val testHelper = MultiThreadTestHelper(5.seconds)
-                val done = AtomicBoolean(false)
-                val th1 = testHelper.createAndStartThread {
-                    val index = barrier.await()
-                    assertEquals(barrier.getParties() - 1, index)
-                }
-                // th2
-                testHelper.createAndStartThread {
-                    val index = barrier.await()
-                    done.set(true)
-                    assertEquals(0, index)
-                }
-                while(!done.get()) {
-                    Thread.sleep(0)
-                }
-                th1.interrupt()
-                testHelper.join()
-                successCounter++
-            }.onFailure {
-                if (it is AssertionError) {
-                    assertionFailure++
-                } else {
-                    throw it
-                }
-            }
-        }
-        if (assertionFailure / successCounter > 0.01) {
-            throw AssertionError("Too many failures in this test")
-        }
+        // ensure a new generation was created
+        assertFalse(barrier.isBroken())
     }
 
     // TODO("ensure a barrier is reusable")
+    // TODO("ensure a thread timesout when waiting for a barrier")
+
+    // tests with concurrency stress
+    @Test
+    fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
+        val parties = 10 randomTo 24
+        val barrier = CyclicBarrier(parties)
+        val testHelper = MultiThreadTestHelper(INFINITE)
+        val expectedIndicesOfArrival = List(parties) { it }.reversed()
+        val indicesMap = mutableMapOf<Int, Int>()
+        val counter = AtomicInteger(0)
+        // Create a map where the key represents the thread index,
+        // and the value represents the expected index of arrival
+        for (i in 0 until parties) {
+            indicesMap[i] = expectedIndicesOfArrival[i]
+        }
+        testHelper.createAndStartMultipleThreads(parties) { _, _ ->
+            val threadId = counter.getAndIncrement()
+            val expectedIndex = indicesMap[threadId]
+            requireNotNull(expectedIndex)
+            // TODO(check-then-act problem here)
+            // TODO(Between getting the counter reference and calling await,
+            //  another thread might entered the barrier first)
+            val actualIndex = barrier.await(INFINITE)
+            assertEquals(expectedIndex, actualIndex)
+        }
+        testHelper.join()
+    }
 }

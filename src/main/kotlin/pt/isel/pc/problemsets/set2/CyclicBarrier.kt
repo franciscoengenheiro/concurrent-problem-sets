@@ -19,7 +19,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     constructor(parties: Int) : this(parties, null)
 
     init {
-        require(parties > 0) { "parties must be a natural number" }
+        require(parties > 1) { "The number of parties must be greater than 1" }
     }
 
     private val lock = ReentrantLock()
@@ -39,9 +39,9 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * Waits until all parties have invoked await on this barrier.
      * @return the arrival index of the current thread, where index [parties] - 1 indicates the first to arrive
      * and zero indicates the last to arrive.
-     * @throws InterruptedException if the current thread was interrupted while waiting.
+     * @throws InterruptedException if the current thread was interrupted while waiting, and the barrier has not broken.
      * @throws BrokenBarrierException if another thread was interrupted or timed out while the current thread was
-     * waiting, or the barrier was reset, or the barrier was broken when await was called.
+     * waiting, or the barrier was resetted, or the barrier was broken when await was called.
      */
     @Throws(InterruptedException::class, BrokenBarrierException::class)
     fun await(): Int = await(Duration.INFINITE)
@@ -51,10 +51,10 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * @param timeout the maximum time that this thread is willing to wait for the barrier to be triggered.
      * @return the arrival index of the current thread, where index [parties] - 1 indicates the first to arrive
      * and zero indicates the last to arrive.
-     * @throws InterruptedException if the current thread was interrupted while waiting.
-     * @throws TimeoutException if the specified timeout elapses.
+     * @throws InterruptedException if the current thread was interrupted while waiting, and the barrier has not broken.
+     * @throws TimeoutException if the specified timeout elapses and the barrier has not broken.
      * @throws BrokenBarrierException if another thread was interrupted or timed out while the current thread was
-     * waiting, or the barrier was reset, or the barrier was broken when await was called.
+     * waiting, or the barrier was resetted, or the barrier was broken when await was called.
      */
     @Throws(InterruptedException::class, TimeoutException::class, BrokenBarrierException::class)
     fun await(timeout: Duration): Int {
@@ -73,6 +73,8 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
             }
             // The thread does not want to wait for the barrier to be broken
             if (timeout == Duration.ZERO) {
+                breakBarrier()
+                // give-up immediately
                 throw TimeoutException()
             }
             // wait-path
@@ -94,11 +96,11 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                     } else {
                         // the barrier was not broken nor completed, so, since this thread was interrupted,
                         // the barrier must be broken by this thread
-                        brakeBarrier()
+                        breakBarrier()
                         throw InterruptedException()
                     }
                 }
-                // Check if the barrier was resetted by another thread
+                // Check if the barrier was broken by another thread
                 if (localBarrierRequest.wasBroken) {
                     throw BrokenBarrierException()
                 }
@@ -108,10 +110,9 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                 }
                 if (remainingNanos <= 0) {
                     // give-up by timeout
-                    if (!barrierRequest.wasBroken)
                     // the barrier was not broken nor completed, but this thread gave up, so the
                     // barrier must be broken by this thread
-                        brakeBarrier()
+                        breakBarrier()
                     throw TimeoutException()
                 }
             }
@@ -139,7 +140,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     fun reset() = lock.withLock {
         // Can't reset a barrier that no thread is waiting for - reusing the same barrier
         if (barrierRequest.nOfThreadsWaiting == 0) return
-        brakeBarrier()
+        breakBarrier()
         // create a new barrier request for the next barrier generation
         barrierRequest = BarrierRequest()
     }
@@ -156,7 +157,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
             runCatching {
                 it.run()
             }.onFailure {
-                brakeBarrier()
+                breakBarrier()
             }
         }
     }
@@ -167,7 +168,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * This method should only be called inside a thread-safe environment, since it checks and
      * alters the internal state of the barrier.
      */
-    private fun brakeBarrier() {
+    private fun breakBarrier() {
         barrierRequest.wasBroken = true
         barrierCondition.signalAll()
     }

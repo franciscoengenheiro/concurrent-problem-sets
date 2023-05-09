@@ -12,7 +12,7 @@
   - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
     - [Promise](#promise)
 - [set2](#set2)
-  - [CyclicBarrier](#cyclicbarrier)
+  - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
 
 ## Set1
@@ -250,7 +250,6 @@ The executor has a lifecycle that can be described by the following states:
 - In the first and only effective call to `shutdown` method, the executor is responsible to signal all the threads waiting,
   for more tasks to be delegated to them, that the executor is shutting down, and they should clear the queue of tasks and
   terminate if no more work is available.
-- the last thread to terminate is also responsible to signal all the threads waiting for the executor to shut down.
 
 `awaitTermination`:
 - **Paths** - The thread can take two major paths when calling this method:
@@ -261,6 +260,8 @@ The executor has a lifecycle that can be described by the following states:
 - **Additional notes**:
     - the thread is interrupted while waiting and throws an `InterruptedException`.
     - a thread that specifies a timeout of *zero* will not wait for the executor to shut down and will return `false` immediately.
+    - the last thread to terminate is also responsible to signal all the threads waiting for the executor to shut down.
+
 
 ### ThreadPoolExecutorWithFuture
 #### Description
@@ -371,13 +372,20 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
         - but was resolved, returns the result of the task execution.
 
 ## Set2
-### CycleBarrier
+### CyclicBarrier
 #### Description
 A [CycleBarrier](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html) is a syncronization mechanism
 that allows a set of threads to wait for each other to reach a common barrier point.
 If provided, a `Runnable` task is executed once the last thread in the set arrives at the barrier.
 
 The barrier is called *cyclic* because it can be re-used again after being broken for the next barrier generation.
+
+A barrier can be *broken* for the following reasons:
+- A thread waiting at the barrier is interrupted.
+- A thread waiting at the barrier times out while waiting.
+- The barrier was resetted, and there was at least one thead waiting at the barrier.
+- If the execution of the runnable by the last thread, throws an exception.  
+- When a thread sets a timeout of zero and enters a non-broken barrier while not completing it.
 
 #### Public interface
 ```kotlin
@@ -401,10 +409,10 @@ class CyclicBarrier(
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
   because it's easier
   for the last thread to enter the barrier
-  to signal all threads that are waiting for the barrier to be broken and thus completing their request,
-  which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier.
+  to signal all threads that are waiting for the barrier to be completed and thus completing their request,
+  which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
 - As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists.
-- Because the threads are always signaled to leave the condition by either resetting the barrier or by breaking it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
+- Because the threads are always signaled to leave the condition by either resetting the barrier or by completing it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
 - The described `Request` is defined as follows:
 
     ```kotlin
@@ -416,28 +424,28 @@ class CyclicBarrier(
     ```
 
 #### Normal execution:
-- A thread calls `await`, and awaits indefinitely for the other threads to reach the barrier, in order for it to be broken and the `Runnable` task to be executed if it exists. Returns the arrival index of this thread where:
+- A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it to be completed and the `Runnable` task to be executed if it exists. Returns the arrival index of this thread where:
     - `getParties() - 1` - for first thread to enter the barrier.
     - `0` - for last thread to enter the barrier.
 - A thread calls `await` (with *timeout*), and awaits for a specified timeout for the other threads to reach the barrier, with the same behavior as the previous method.
 - A thread calls `reset`, and resets the barrier for the next barrier generation.
-- A thread calls `getNumberWaiting`, and retrieves the number of threads that are waiting for the barrier to be broken.
-- A thread calls `getParties`, and retrieves the number of threads that must invoke `await` in order for the barrier to be broken.
+- A thread calls `getNumberWaiting`, and retrieves the number of threads that are waiting for the barrier to be completed.
+- A thread calls `getParties`, and retrieves the number of threads that must invoke `await` in order for the barrier to be completed.
 - A thread calls `isBroken`, and retrieves information about whether the barrier has been broken or not.
 
 #### Conditions of execution:
 `await`:
 - **Paths** - The thread can take two major paths when calling this method:
     - **fast-path** 
-        - the barrier has already been broken in the generation this thread is in, and as such, the thread throws a `BrokenBarrierException`.
-        - the barrier has not yet been broken, and this thread is the last one to enter the barrier, and as such, the thread breaks the barrier, executes the `Runnable` task if it exists and signals all the other threads waiting for the barrier to be broken.
+        - the current barrier has already been broken, and as such, the thread throws a `BrokenBarrierException`.
+        - the barrier has not yet been broken, and this thread is the last one to enter the barrier, and as such, the thread completes the barrier, executes the `Runnable` task if it exists, signals all the other threads waiting for the barrier to be broken and creates a new `Request` for the next barrier generation.
+        - A thread that specifies a timeout of *zero* and does not complete the barrier will not wait for that event and throws a `TimeoutException` immediately.
     - **wait-path**
         - the barrier has not yet been broken, and this thread is not the last one to enter the barrier, and as such, the thread passively awaits for that condition to be met. 
-- **Giving-up** - While waiting for the barrier to be broken, a thread can *give-up* in the following cases:
-    - the thread is interrupted and, as such, throws an `InterruptedException`, **if and only if** it was the first thread to be interrupted out of all the threads waiting for the barrier to be broken.
+- **Giving-up** - While waiting for the barrier to be completed, a thread can *give-up* in the following cases:
+    - the thread is interrupted and, as such, throws an `InterruptedException`, ***if and only if*** it was the first thread to be interrupted out of all the threads waiting for the barrier to be broken.
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 - **Additional notes**:.
-    - A thread that specifies a timeout of *zero* and does not break the barrier will not wait for that event and throws a `TimeoutException` immediately.
     - If the last thread to enter the barrier throws an exception when executing the `Runnable` task, the barrier is broken
      and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
