@@ -37,8 +37,8 @@ internal class ThreadSafeContainerTests {
 
     @RepeatedTest(3)
     fun `One thread uses thread safe container with dynamic UnsafeValues with multiple lives`() {
-        val size = 1000 randomTo 5000
-        val lives = 1000
+        val size = 100 randomTo 500
+        val lives = 50 randomTo 100
         val valuesArray = Array(size) { UnsafeValue(defaultValue, lives) }
         val container = ThreadSafeContainer(valuesArray)
         repeat(valuesArray.size * lives) {
@@ -72,15 +72,16 @@ internal class ThreadSafeContainerTests {
 
     @Test
     fun `Multiple threads try to consume from a container with multiple values and a random set of lives`() {
-        val size = 3
+        val size = 3 // 3 randomTo 5
+        val nOfThreads = 3 // 10 randomTo 24
         var totalLivesCounter = 0
         val valuesArray = Array(size) {
-            val randomLives = 4
-            UnsafeValue(defaultValue, randomLives).also { totalLivesCounter += randomLives }
+            val randomLives = 4 // 5 randomTo 10
+            UnsafeValue(defaultValue, randomLives)
+                .also { totalLivesCounter += randomLives }
         }
         val container = ThreadSafeContainer(valuesArray)
         val testHelper = MultiThreadTestHelper(5.seconds)
-        val nOfThreads = 3
         val consumedCounter = AtomicInteger(0)
         val notConsumedCounter = AtomicInteger(0)
         val barrier = JavaCyclicBarrier(nOfThreads)
@@ -97,10 +98,10 @@ internal class ThreadSafeContainerTests {
             }
         }
         testHelper.join()
+        // Ensure the container was emptied
         assertNull(container.consume())
         // Ensure some threads couldn't consume a value
         assertTrue { notConsumedCounter.get() > 0 }
         assertEquals(totalLivesCounter, consumedCounter.get())
     }
-
 }

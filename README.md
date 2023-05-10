@@ -37,9 +37,9 @@ class NAryExchanger<T>(groupSize: Int) {
 
 In the following image, an example can be seen of such iteraction between the exchanger and a set of threads.
 
-| ![NAryExchanger](src/main/resources/NAryExchanger.png) |
-|:------------------------------------------------------:|
-|                *NAryExchanger example*                 |
+| ![NAryExchanger](src/main/resources/set1/nary-exchanger.png) |
+|:------------------------------------------------------------:|
+|                   *NAryExchanger example*                    |
 
 #### Style of syncronization: 
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
@@ -100,9 +100,9 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
 
 In the following image, an example can be seen of the iteraction between the blocking queue and a set of producer and consumer threads.
 
-| ![BlockingMessageQueue](src/main/resources/BlockingMessageQueue.png) |
-|:--------------------------------------------------------------------:|
-|                    *BlockingMessageQueue example*                    |
+| ![BlockingMessageQueue](src/main/resources/set1/blocking-message-queue.png) |
+|:---------------------------------------------------------------------------:|
+|                       *BlockingMessageQueue example*                        |
 
 #### Style of syncronization:
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, which one representing a different condition:
@@ -135,9 +135,9 @@ only it should remove its request from the *consumer requests queue*,
 
 The following image tries to illustrate an example of the described special delegation.
 
-| ![BlockingMessageQueueConsumerSpecialDelegation](src/main/resources/BlockingMessageQueueConsumerSpecialDelegation.png) |
-|:----------------------------------------------------------------------------------------------------------------------:|
-|                                             *Consumer Special delegation*                                              |
+| ![BlockingMessageQueueConsumerSpecialDelegation](src/main/resources/set1/blocking-message-queue-consumer-special-delegation.png) |
+|:--------------------------------------------------------------------------------------------------------------------------------:|
+|                                                  *Consumer Special delegation*                                                   |
 
 In this example, **Consumer Thread 1** is waiting to dequeue 4 messages, but the *queue* only has 3 messages available.
 Since no *Producer Thread* enqueued the final message to complete its request,
@@ -220,9 +220,9 @@ class ThreadPoolExecutor(
 
 The following image shows how a task (**R**), that is delegated to a worker thread is executed within the thread pool.
 
-| ![ThreadPoolExcecutor](src/main/resources/ThreadPoolExecutor.png) |
-|:-----------------------------------------------------------------:|
-|                   *ThreadPoolExcecutor example*                   |
+| ![ThreadPoolExcecutor](src/main/resources/set1/thread-pool-executor.png) |
+|:------------------------------------------------------------------------:|
+|                      *ThreadPoolExcecutor example*                       |
 
 #### Style of synchronization
 - In this syncronizer, the `Monitor Style` was used to synchronize the *worker threads*.
@@ -232,9 +232,9 @@ syncronizer and doesn't delegate the alteration of that state to another thread.
 #### Lifecycle
 The executor has a lifecycle that can be described by the following states:
 
-  | ![ThreadPool States](src/main/resources/ThreadPoolStates.png) |
-  |:-------------------------------------------------------------:|
-  |                  *ThreadPoolExecutor states*                  |
+  | ![ThreadPool States](src/main/resources/set1/thread-pool-states.png) |
+  |:--------------------------------------------------------------------:|
+  |                     *ThreadPoolExecutor states*                      |
  
 - **Ready** - the executor is accepting tasks to be executed. Outside threads can delegate tasks to the thread pool using the `execute` method.
 - **Shutting down** - the executor is in shutdown mode, and as such, is not accepting tasks to be executed, but it's still executing the tasks that were already delegated to it. This process is started by calling the `shutdown` method.
@@ -248,7 +248,7 @@ The executor has a lifecycle that can be described by the following states:
 #### Conditions of execution:
 `shutdown`:
 - In the first and only effective call to `shutdown` method, the executor is responsible to signal all the threads waiting,
-  for more tasks to be delegated to them, that the executor is shutting down, and they should clear the queue of tasks and
+  for more tasks to be delegated to them that the executor is shutting down, and they should clear the queue of tasks and
   terminate if no more work is available.
 
 `awaitTermination`:
@@ -288,9 +288,9 @@ that is delegated to a worker thread
 is executed within the thread pool.
 A representative (**F**) of the task execution is returned to the outside thread that delegated the task.
 
-| ![ThreadPoolExcecutorWithFuture](src/main/resources/ThreadPoolExecutorWithFuture.png) |
-|:-------------------------------------------------------------------------------------:|
-|                        *ThreadPoolExcecutorWithFuture example*                        |
+| ![ThreadPoolExcecutorWithFuture](src/main/resources/set1/thread-pool-executor-with-future.png) |
+|:----------------------------------------------------------------------------------------------:|
+|                            *ThreadPoolExcecutorWithFuture example*                             |
 
 #### Style of synchronization
 - In this syncronizer, the `Monitor Style` was used to synchronize the *worker threads*.
@@ -335,9 +335,9 @@ class Promise<T> : Future<T> {
 #### Lifecycle
 The promise has a lifecycle that can be described by the following states:
 
-| ![Promise states](src/main/resources/PromiseStates.png) |
-|:-------------------------------------------------------:|
-|                    *Promise states*                     |
+| ![Promise states](src/main/resources/set1/promise-states.png) |
+|:-------------------------------------------------------------:|
+|                       *Promise states*                        |
 
 - **Pending** - the promise is pending and has not yet produced a result.
 - **Resolved** - the computation has completed successfully with the given value.
@@ -385,7 +385,7 @@ A barrier can be *broken* for the following reasons:
 - A thread waiting at the barrier times out while waiting.
 - The barrier was resetted, and there was at least one thead waiting at the barrier.
 - If the execution of the runnable by the last thread, throws an exception.  
-- When a thread sets a timeout of zero and enters a non-broken barrier while not completing it.
+- When a thread sets a timeout of zero and enters a non-broken barrier and thus not complete it.
 
 #### Public interface
 ```kotlin
@@ -405,6 +405,10 @@ class CyclicBarrier(
 }
 ```
 
+| ![Barrier States](src/main/resources/set2/cyclic-barrier-states.png) |
+|:--------------------------------------------------------------------:|
+|                       *Cyclic Barrier states*                        |
+
 #### Style of synchronization
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
   because it's easier
@@ -413,6 +417,7 @@ class CyclicBarrier(
   which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
 - As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists.
 - Because the threads are always signaled to leave the condition by either resetting the barrier or by completing it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
+- When a barrier is resetted, it is only broken if there are any threads waiting at the barrier. However, a new barrier generation is always created because a thread with a timeout of *zero* can break the barrier without increasing the counter - number of threads waiting — making it unusable.
 - The described `Request` is defined as follows:
 
     ```kotlin
@@ -447,5 +452,5 @@ class CyclicBarrier(
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 - **Additional notes**:.
-    - If the last thread to enter the barrier throws an exception when executing the `Runnable` task, the barrier is broken
+    - If the last thread to enter the barrier throws an exception when executing the `Runnable` task, the barrier is broken.
      and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
