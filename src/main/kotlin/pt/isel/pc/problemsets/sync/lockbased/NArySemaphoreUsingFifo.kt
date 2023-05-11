@@ -1,36 +1,32 @@
-package pt.isel.pc.problemsets.sync.withLocks
+package pt.isel.pc.problemsets.sync.lockbased
 
 import pt.isel.pc.problemsets.util.NodeLinkedList
-import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration
 
 /**
- * Semaphore with acquisition and release of more than one unit, using kernel-style.
+ * Semaphore with acquisition and release of more than one unit, using monitor-style.
  */
-class NArySemaphoreUsingFifoAndKernelStyle(
-    initialUnits: Int
+class NArySemaphoreUsingFifo(
+    initialUnits: Int,
 ) {
     init {
         require(initialUnits > 0) { "Number of initial units must be greater than zero" }
     }
 
-    private class Request(
-        val requestedUnits: Int,
-        val condition: Condition,
-        var isDone: Boolean = false
-    )
+    data class Request(val requestedUnits: Int)
 
     private var availableUnits = initialUnits
     private val queue = NodeLinkedList<Request>()
     private val lock = ReentrantLock()
+    private val condition = lock.newCondition()
 
     fun release(releasedUnits: Int) {
         require(releasedUnits > 0) { "releasedUnits must be greater than zero" }
         lock.withLock {
             availableUnits += releasedUnits
-            completeAll()
+            signalIfNeeded()
         }
     }
 
@@ -43,37 +39,33 @@ class NArySemaphoreUsingFifoAndKernelStyle(
                 return true
             }
             var remainingNanos = timeout.inWholeNanoseconds
-            val localRequest = queue.enqueue(Request(requestedUnits, lock.newCondition()))
+            val localRequest = queue.enqueue(Request(requestedUnits))
             while (true) {
                 try {
-                    remainingNanos = localRequest.value.condition.awaitNanos(remainingNanos)
+                    remainingNanos = condition.awaitNanos(remainingNanos)
                 } catch (e: InterruptedException) {
-                    if (localRequest.value.isDone) {
-                        Thread.currentThread().interrupt()
-                        return true
-                    }
                     queue.remove(localRequest)
-                    completeAll()
+                    signalIfNeeded()
                     throw e
                 }
-                if (localRequest.value.isDone) {
+                if (queue.isHeadNode(localRequest) && availableUnits >= requestedUnits) {
+                    queue.remove(localRequest)
+                    availableUnits -= requestedUnits
+                    signalIfNeeded()
                     return true
                 }
                 if (remainingNanos <= 0) {
                     queue.remove(localRequest)
-                    completeAll()
+                    signalIfNeeded()
                     return false
                 }
             }
         }
     }
 
-    private fun completeAll() {
-        while (queue.headCondition { availableUnits >= it.requestedUnits }) {
-            val request = queue.pull().value
-            availableUnits -= request.requestedUnits
-            request.condition.signal()
-            request.isDone = true
+    private fun signalIfNeeded() {
+        if (queue.headCondition { availableUnits >= it.requestedUnits }) {
+            condition.signalAll()
         }
     }
 }

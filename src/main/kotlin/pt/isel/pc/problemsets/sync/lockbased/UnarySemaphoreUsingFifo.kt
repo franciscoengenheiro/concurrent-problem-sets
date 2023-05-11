@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync.withLocks
+package pt.isel.pc.problemsets.sync.lockbased
 
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.locks.ReentrantLock
@@ -6,40 +6,34 @@ import kotlin.concurrent.withLock
 import kotlin.time.Duration
 
 /**
- * Semaphore with acquisition and release of more than one unit, using monitor-style.
+ * Semaphore using a monitor-style design, providing fairness by using a Firt In First Out policy to grant units.
  */
-class NArySemaphoreUsingFifo(
-    initialUnits: Int,
+class UnarySemaphoreUsingFifo(
+    initialUnits: Int
 ) {
     init {
         require(initialUnits > 0) { "Number of initial units must be greater than zero" }
     }
 
-    data class Request(val requestedUnits: Int)
-
     private var availableUnits = initialUnits
-    private val queue = NodeLinkedList<Request>()
+    private val queue = NodeLinkedList<Unit>()
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
 
-    fun release(releasedUnits: Int) {
-        require(releasedUnits > 0) { "releasedUnits must be greater than zero" }
-        lock.withLock {
-            availableUnits += releasedUnits
-            signalIfNeeded()
-        }
+    fun release() = lock.withLock {
+        availableUnits += 1
+        signalIfNeeded()
     }
 
     @Throws(InterruptedException::class)
-    fun acquire(requestedUnits: Int, timeout: Duration): Boolean {
-        require(requestedUnits > 0) { "requestedUnits must be greater than zero" }
+    fun acquire(timeout: Duration): Boolean {
         lock.withLock {
-            if (queue.empty && availableUnits >= requestedUnits) {
-                availableUnits -= requestedUnits
+            if (queue.empty && availableUnits > 0) {
+                availableUnits -= 1
                 return true
             }
             var remainingNanos = timeout.inWholeNanoseconds
-            val localRequest = queue.enqueue(Request(requestedUnits))
+            val localRequest = queue.enqueue(Unit)
             while (true) {
                 try {
                     remainingNanos = condition.awaitNanos(remainingNanos)
@@ -48,9 +42,9 @@ class NArySemaphoreUsingFifo(
                     signalIfNeeded()
                     throw e
                 }
-                if (queue.isHeadNode(localRequest) && availableUnits >= requestedUnits) {
+                if (queue.isHeadNode(localRequest) && availableUnits > 0) {
                     queue.remove(localRequest)
-                    availableUnits -= requestedUnits
+                    availableUnits -= 1
                     signalIfNeeded()
                     return true
                 }
@@ -64,7 +58,7 @@ class NArySemaphoreUsingFifo(
     }
 
     private fun signalIfNeeded() {
-        if (queue.headCondition { availableUnits >= it.requestedUnits }) {
+        if (queue.notEmpty && availableUnits > 0) {
             condition.signalAll()
         }
     }

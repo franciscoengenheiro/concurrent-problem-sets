@@ -80,13 +80,13 @@ internal class ThreadSafeContainerTests {
         assertEquals(nOfThreads - 1, notConsumedCounter.get())
     }
 
-    @RepeatedTest(10)
+    @RepeatedTest(5)
     fun `Multiple threads try to consume from a container with multiple values and a random set of lives`() {
-        val size = 3 // 3 randomTo 5
-        val nOfThreads = 3 // 10 randomTo 24
+        val size = 10 randomTo 20
+        val nOfThreads = 8 randomTo 16
         var totalLivesCounter = 0
         val valuesArray = Array(size) {
-            val randomLives = 4 // 5 randomTo 10
+            val randomLives = 25 randomTo 100
             AtomicValue(defaultValue, randomLives)
                 .also { totalLivesCounter += randomLives }
         }

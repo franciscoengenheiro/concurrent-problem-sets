@@ -122,13 +122,14 @@ class ThreadSafeCountedHolderTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         val nrOfUsages = 10
         val exceptionCounter = AtomicInteger(0)
-        // test thread uses the value several times
+        // this thread uses the value several times
         val th1 = testHelper.createAndStartThread {
             repeat(nrOfUsages) {
                 holder.tryStartUse()
             }
         }
         th1.join()
+        // this threads try to decrement its usage counter
         testHelper.createAndStartMultipleThreads(nrOfUsages + 1) { _, _ ->
             runCatching {
                 holder.endUse()
@@ -137,12 +138,13 @@ class ThreadSafeCountedHolderTests {
             }
         }
         testHelper.join()
-        // ensure the resource is only closed once
         assertEquals(0, exceptionCounter.get())
+        // ensure the resource is only closed once
         assertEquals(1, resource.closedCounter.get())
         assertFailsWith<IllegalStateException> {
             holder.endUse()
         }
+        assertNull(holder.tryStartUse())
     }
 
 }

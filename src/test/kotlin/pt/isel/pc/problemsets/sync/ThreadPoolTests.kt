@@ -1,7 +1,7 @@
 package pt.isel.pc.problemsets.sync
 
 import org.junit.jupiter.api.Test
-import pt.isel.pc.problemsets.sync.withLocks.SimpleThreadPool
+import pt.isel.pc.problemsets.sync.lockbased.SimpleThreadPool
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit

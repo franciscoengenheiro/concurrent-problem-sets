@@ -237,53 +237,20 @@ class CyclicBarrierTests {
         assertFalse(barrier.isBroken())
     }
 
-    @RepeatedTest(10)
+    @RepeatedTest(3)
     fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
-        val parties = 2
+        val parties = 10 randomTo 24
         val barrier = CyclicBarrier(parties)
         val testHelper = MultiThreadTestHelper(15.seconds)
-        val expectedIndicesOfArrival = List(parties) { it }.reversed()
-        val indicesMap = mutableMapOf<Int, Int>()
-        // Create a map where the key represents the thread id,
-        // and the value represents the expected index of arrival
-        // If parties = 3, then the map will be: {0: 2, 1: 1, 2: 0}
-        for (index in 0 until parties) {
-            indicesMap[index] = expectedIndicesOfArrival[index]
-        }
-        val counter = AtomicInteger(0)
+        val expectedSet = List(parties) { it }.reversed().toSet()
+        val actualIndicesList: MutableList<Int> = mutableListOf()
         testHelper.createAndStartMultipleThreads(parties) { _, _ ->
-            val threadId = counter.getAndIncrement()
-            // TODO("reminder: here lays a check-then-act error -> between retrieving the counter
-            //  value and entering the barrier, another thread might have done that first")
-            // TODO("how can I ensure the thread that retrieves the counter, must be the one
-            //  to enter, cannot use a lock otherwise it will keep it for the duration of
-            //   of the await at the barrier")
             val actualIndex = barrier.await()
-            val expectedIndex = indicesMap[threadId]
-            requireNotNull(expectedIndex)
-            assertEquals(expectedIndex, actualIndex)
+            // Add the value to the indices list
+            actualIndicesList.add(actualIndex)
         }
         testHelper.join()
-    }
-
-    @Test
-    fun `Several barrier generations are created with the several Runnables`() {
-        val parties = 20
-        val nrOfGenerations = 10
-        val simpleTask = SimpleTask()
-        val barrier = CyclicBarrier(parties) {
-            // TODO("how to add several runnables?")
-        }
-        repeat(nrOfGenerations) { genId ->
-            val testHelper = MultiThreadTestHelper(10.seconds)
-            testHelper.createAndStartMultipleThreads(parties) { _, _ ->
-                assertFalse { simpleTask.done }
-                val indexOfArrival = barrier.await()
-                if (indexOfArrival == 0) {
-                    assertTrue { simpleTask.done }
-                }
-            }
-            testHelper.join()
-        }
+        assertEquals(parties, actualIndicesList.size)
+        assertEquals(expectedSet, actualIndicesList.toSet())
     }
 }

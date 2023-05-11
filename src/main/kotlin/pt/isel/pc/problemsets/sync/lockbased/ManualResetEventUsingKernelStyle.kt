@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync.withLocks
+package pt.isel.pc.problemsets.sync.lockbased
 
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock

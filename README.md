@@ -4,17 +4,18 @@
 
 - Student: `49428 - Francisco Engenheiro - LEIC41D`
 
-## Table of Contents 
+## Table of Contents
 - [Set1](#set1)
   - [NAryExchanger](#naryexchanger)
   - [BlockinMessageQueue](#blockingmessagequeue)
   - [ThreadPoolExecutor](#threadpoolexecutor)
   - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
     - [Promise](#promise)
-- [set2](#set2)
+- [Set2](#set2)
   - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
+- [Lock-based vs Lock-free Implementations](#lock-based-vs-lock-free-implementations)
 
 ## Set1
 ### NAryExchanger
@@ -425,7 +426,7 @@ class CyclicBarrier(
   for the last thread to enter the barrier
   to signal all threads that are waiting for the barrier to be opened and thus completing their request,
   which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
-- As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another instance of the `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists. If the execution of the `Runnable` task throws an exception, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`.
+- As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another instance of the `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists. If the execution of the `Runnable` task throws a `throwable`, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`.
 - Because the threads are always signaled to leave the condition by either resetting the barrier or by opening it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
 - When a barrier is resetted, it is only broken if there are any threads waiting at the barrier. However, a new barrier generation is always created because a thread with a timeout of *zero* can break the barrier without increasing the counter - number of threads waiting — making it unusable.
 - The described `Request` is defined as follows:
@@ -468,7 +469,7 @@ The barrier has the following possible states for each barrier generation:
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 - **Additional notes**:.
-    - If the last thread to enter the barrier throws an exception when executing the `Runnable` task, the barrier is broken.
+    - If the last thread to enter the barrier throws a `throwable` when executing the `Runnable` task, the barrier is broken.
      and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
 
 ### ThreadSafeContainer
@@ -546,3 +547,38 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
 #### Normal execution:
 - A thread calls `tryStartUse`, and tries to start using the value, if it was not previously closed.
 - A thread calls `endUse`, and ends the use of the value, if it was not previously closed.
+
+### Lock-based vs Lock-free implementations
+
+```kotlin
+object LockBasedImplementation {
+    val lock: Lock = ReentrantLock()
+    var sharedVariable: Int = 0 // or any other type
+    fun update() = lock.withLock {
+        logic(sharedVariable)
+    }
+}
+```
+
+```kotlin
+object LockFreeImplementation {
+    // or any other variable modifier, class or annotation that ensures the
+    // writing to this reference happens-before the read
+    val sharedVariable: AtomicInteger = AtomicInteger(0)
+    fun update() {
+        while (true) {
+            val observedValue = sharedVariable.get()
+            val nextValue = if (condition) {
+                logic(observedValue)
+            } else {
+                failureLogic()
+            }
+            if (sharedVariable.compareAndSet(observedValue, nextValue)) {
+                successLogic()
+                return // or any other exit condition of the retry loop
+            }
+            // retry
+        }
+    }
+}
+```
