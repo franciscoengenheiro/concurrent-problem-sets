@@ -14,8 +14,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * Provides a [Future] that is explicitly completed, and it can be resolved with a value, rejected with an
- * exception or cancelled.
+ * Provides a [Future] that is explicitly completed, and it can be resolved with a value, rejected with a
+ * throwable or canceled.
  * This is an implementation of the
  * [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
  * pattern in Kotlin, using the Monitor synchronization style.

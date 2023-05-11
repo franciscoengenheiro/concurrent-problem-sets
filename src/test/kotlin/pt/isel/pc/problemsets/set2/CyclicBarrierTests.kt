@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.randomTo
 import java.util.concurrent.BrokenBarrierException
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
@@ -218,35 +217,6 @@ class CyclicBarrierTests {
     }
 
     // tests with concurrency stress:
-    @Test
-    fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
-        val parties = 2
-        val barrier = CyclicBarrier(parties)
-        val testHelper = MultiThreadTestHelper(15.seconds)
-        val expectedIndicesOfArrival = List(parties) { it }.reversed()
-        val indicesMap = mutableMapOf<Int, Int>()
-        // Create a map where the key represents the thread id,
-        // and the value represents the expected index of arrival
-        // If parties = 3, then the map will be: {0: 2, 1: 1, 2: 0}
-        for (index in 0 until parties) {
-            indicesMap[index] = expectedIndicesOfArrival[index]
-        }
-        val counter = AtomicInteger(0)
-        testHelper.createAndStartMultipleThreads(parties) { _, _ ->
-            val threadId = counter.getAndIncrement()
-            // TODO("reminder: here lays a check-then-act error, between retrieving the counter
-            //  value and entering the barrier, another thread might have done that first")
-            // TODO("how can I ensure the thread that retrieves the counter, must be the one
-            //  to enter, cannot use a lock otherwise it will keep it for the duration of
-            //   of the barrier await")
-            val actualIndex = barrier.await()
-            val expectedIndex = indicesMap[threadId]
-            requireNotNull(expectedIndex)
-            assertEquals(expectedIndex, actualIndex)
-        }
-        testHelper.join()
-    }
-
     @RepeatedTest(3)
     fun `Reset a barrier with multiple threads waiting`() {
         val parties = 10 randomTo 24
@@ -265,6 +235,35 @@ class CyclicBarrierTests {
         testHelper.join()
         // ensure a new generation was created
         assertFalse(barrier.isBroken())
+    }
+
+    @Test
+    fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
+        val parties = 2
+        val barrier = CyclicBarrier(parties)
+        val testHelper = MultiThreadTestHelper(15.seconds)
+        val expectedIndicesOfArrival = List(parties) { it }.reversed()
+        val indicesMap = mutableMapOf<Int, Int>()
+        // Create a map where the key represents the thread id,
+        // and the value represents the expected index of arrival
+        // If parties = 3, then the map will be: {0: 2, 1: 1, 2: 0}
+        for (index in 0 until parties) {
+            indicesMap[index] = expectedIndicesOfArrival[index]
+        }
+        val counter = AtomicInteger(0)
+        testHelper.createAndStartMultipleThreads(parties) { _, _ ->
+            val threadId = counter.getAndIncrement()
+            // TODO("reminder: here lays a check-then-act error -> between retrieving the counter
+            //  value and entering the barrier, another thread might have done that first")
+            // TODO("how can I ensure the thread that retrieves the counter, must be the one
+            //  to enter, cannot use a lock otherwise it will keep it for the duration of
+            //   of the barrier await")
+            val actualIndex = barrier.await()
+            val expectedIndex = indicesMap[threadId]
+            requireNotNull(expectedIndex)
+            assertEquals(expectedIndex, actualIndex)
+        }
+        testHelper.join()
     }
 
     @Test

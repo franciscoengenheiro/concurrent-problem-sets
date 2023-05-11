@@ -27,7 +27,7 @@ class ThreadSafeCountedHolderTests {
     }
 
     @Test
-    fun `Holder closes a resource beyond the usage counter`() {
+    fun `Holder closes a resource after the usage counter reaches zero`() {
         val resource = TestResource()
         val holder = ThreadSafeCountedHolder(resource)
         holder.endUse()

@@ -1,28 +1,44 @@
 package pt.isel.pc.problemsets.set2
 
 import java.io.Closeable
-import kotlin.jvm.Throws
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A thread-safe holder that has an internal counter that specifies how many times the value was used.
+ * A thread-safe holder that has an internal counter that keeps track of how many times the value was used.
  * The value is automatically closed when the counter reaches zero.
  * @param T the type of the value that is being held and that implements the [Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface.
  * @param value the value to be held.
  */
 class ThreadSafeCountedHolder<T : Closeable>(value: T) {
+    @Volatile
     private var value: T? = value
+
     // the instance creation counts as one usage
-    // TODO("use volatile or atomic reference")
-    private var useCounter: Int = 1
+    private var useCounter: AtomicInteger = AtomicInteger(1)
 
     /**
      * Tries to use the value. If the value is used, the internal counter is incremented.
      * @return the value if it is not null, null otherwise.
      */
     fun tryStartUse(): T? {
-        if (value == null) return null
-        useCounter += 1
-        return value
+        // fast-path -> the value is already null, which means the resource was closed
+        value ?: return null
+        // retry-path -> the value is not closed, so this thread tries to increment the usage counter
+        while (true) {
+            // since the value variable is marked as volatile, the Java Memory Model garantees that
+            // a writing to this variable happens-before this next read.
+            value ?: return null
+            // TODO("try to increment the counter if its still possible")
+            val observedCounter = useCounter.get()
+            val newCounterValue = if (observedCounter > 0)
+                observedCounter + 1
+            else
+                return null
+            if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
+                return value
+            }
+            // retry
+        }
     }
 
     /**
@@ -32,10 +48,27 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
      */
     @Throws(IllegalStateException::class)
     fun endUse() {
-        check(useCounter > 0) { "The value is already closed."}
-        if (--useCounter == 0) {
-            value?.close()
-            value = null
+        // fast-path -> the value is already null
+        val initialObservedCounter = useCounter.get()
+        if (initialObservedCounter == 0)
+            throw IllegalStateException("The value is already closed.")
+        while (true) {
+            val observedCounter = useCounter.get()
+            val newCounterValue = if (observedCounter > 0)
+                observedCounter - 1
+            else
+                throw IllegalStateException("The value is already closed.")
+            // try to decrement it if observed lives value is still the same value that
+            // is inside the atomic reference
+            if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
+                val observedCounterAfterDec = useCounter.get()
+                if (observedCounterAfterDec == 0) {
+                    value ?: return
+                    value?.close()
+                    value = null
+                    return
+                }
+            }
         }
     }
 }
