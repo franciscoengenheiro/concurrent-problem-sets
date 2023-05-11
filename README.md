@@ -17,6 +17,8 @@
 
 ## Set1
 ### NAryExchanger
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/NAryExchanger.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/NAryExchangerTests.kt)
+
 #### Description
 This exchanger implementation is similar to the [Java Exchanger](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/Exchanger.html), but it allows to exchange generic values between 
 an arbitrary group of threads instead of just two. It also allows for each thread to specify a willing-to-wait 
@@ -73,6 +75,8 @@ required to alter the state of the `Exchanger` or their own state when they retu
     - A thread that specifies a timeout of *zero* will not wait for the group to be completed and will return `null` immediately if it did not complete the group.
   
 ### BlockingMessageQueue
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueue.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueueTests.kt)
+
 #### Description
 This syncronizer is a blocking queue,
 similar to an [ArrayBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ArrayBlockingQueue.html)
@@ -128,7 +132,7 @@ In the following image, an example can be seen of the iteraction between the blo
 - The delegation is used in the sense where the *Consumer thread* that dequeues the messages is the one that signals all *Producer
 threads*, that were waiting to enqueue a message, and completes their request if it can be completed, because it altered the 
 state of the syncronizer and because of that it might have created conditions that allow other threads to complete their requests. 
-This process works in both ways, where a *Producer thread* should complete all *Consumer thread requests* if it can be completed.
+This process works in both ways, where a *Producer thread* should complete all *Consumer thread requests* if they can be completed.
 - In this context, there's also a special case where if a *Consumer Thread* gives up, either by timeout or interruption, not
 only it should remove its request from the *consumer requests queue*,
   but also it should signal all *Consumer Threads*, that were waiting to dequeue a set of messages, and complete their request if it can be completed.
@@ -188,6 +192,8 @@ represents is the same as all other *Producer Thread* requests.
     - A thread that specifies a timeout of *zero* will not wait and will return `null` immediately if it did not dequeue the number of requested messages.
 
 ### ThreadPoolExecutor
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutor.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorTests.kt)
+
 #### Description
 This syncronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
 that allows outside threads to delegate the execution of a task to other threads - *worker threads* - that it manages.
@@ -264,6 +270,8 @@ The executor has a lifecycle that can be described by the following states:
 
 
 ### ThreadPoolExecutorWithFuture
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFuture.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFutureTests.kt)
+
 #### Description
 This syncronizer is similar to the [ThreadPoolExecutor](#threadpoolexecutor), but instead of 
 [Runnable](https://docs.oracle.com/javase/7/docs/api/java/lang/Runnable.html) tasks, 
@@ -308,6 +316,8 @@ private class ExecutionRequest<T>(
 ```
 
 ### Promise
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/Promise.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/PromiseTests.kt)
+
 #### Description
 In order to allow the outside threads to get the result of the task execution,
 the `execute` method of [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture) returns a 
@@ -373,6 +383,9 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
 ## Set2
 ### CyclicBarrier
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrier.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrierTests.kt)
+
 #### Description
 A [CycleBarrier](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html) is a syncronization mechanism
 that allows a set of threads to wait for each other to reach a common barrier point.
@@ -380,12 +393,12 @@ If provided, a `Runnable` task is executed once the last thread in the set arriv
 
 The barrier is called *cyclic* because it can be re-used again after being broken for the next barrier generation.
 
-A barrier can be *broken* for the following reasons:
+Assuming a barrier is not opened, it can be *broken* for the following reasons:
 - A thread waiting at the barrier is interrupted.
 - A thread waiting at the barrier times out while waiting.
 - The barrier was resetted, and there was at least one thead waiting at the barrier.
 - If the execution of the runnable by the last thread, throws an exception.  
-- When a thread sets a timeout of zero and enters a non-broken barrier and thus not complete it.
+- When a thread sets a timeout of zero and enters a non-broken barrier but does not complete it.
 
 #### Public interface
 ```kotlin
@@ -405,18 +418,14 @@ class CyclicBarrier(
 }
 ```
 
-| ![Barrier States](src/main/resources/set2/cyclic-barrier-states.png) |
-|:--------------------------------------------------------------------:|
-|                       *Cyclic Barrier states*                        |
-
 #### Style of synchronization
 - For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
   because it's easier
   for the last thread to enter the barrier
-  to signal all threads that are waiting for the barrier to be completed and thus completing their request,
+  to signal all threads that are waiting for the barrier to be opened and thus completing their request,
   which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
-- As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists.
-- Because the threads are always signaled to leave the condition by either resetting the barrier or by completing it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
+- As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another instance of the `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists. If the execution of the `Runnable` task throws an exception, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`.
+- Because the threads are always signaled to leave the condition by either resetting the barrier or by opening it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
 - When a barrier is resetted, it is only broken if there are any threads waiting at the barrier. However, a new barrier generation is always created because a thread with a timeout of *zero* can break the barrier without increasing the counter - number of threads waiting — making it unusable.
 - The described `Request` is defined as follows:
 
@@ -424,33 +433,87 @@ class CyclicBarrier(
     private class BarrierRequest(
         var nOfThreadsWaiting: Int = 0,
         var wasBroken: Boolean = false,
-        var wasCompleted: Boolean = false
+        var wasOpened: Boolean = false
     )
     ```
 
+The barrier has the following possible states for each barrier generation:
+
+| ![Barrier States](src/main/resources/set2/cyclic-barrier-states.png) |
+|:--------------------------------------------------------------------:|
+|             *Cyclic Barrier possible generation states*              |
+
 #### Normal execution:
-- A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it to be completed and the `Runnable` task to be executed if it exists. Returns the arrival index of this thread where:
+- A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it to be opened and the `Runnable` task to be executed if it exists. Returns the arrival index of this thread where:
     - `getParties() - 1` - for first thread to enter the barrier.
     - `0` - for last thread to enter the barrier.
 - A thread calls `await` (with *timeout*), and awaits for a specified timeout for the other threads to reach the barrier, with the same behavior as the previous method.
-- A thread calls `reset`, and resets the barrier for the next barrier generation.
-- A thread calls `getNumberWaiting`, and retrieves the number of threads that are waiting for the barrier to be completed.
-- A thread calls `getParties`, and retrieves the number of threads that must invoke `await` in order for the barrier to be completed.
+- A thread calls `reset`, and resets the barrier for the next generation.
+- A thread calls `getNumberWaiting`, and retrieves the number of threads that are waiting for the barrier to be opened.
+- A thread calls `getParties`, and retrieves the number of threads that must invoke `await` in order for the barrier to be opened.
 - A thread calls `isBroken`, and retrieves information about whether the barrier has been broken or not.
 
 #### Conditions of execution:
 `await`:
-- **Paths** - The thread can take two major paths when calling this method:
+- **Paths** - The thread can take three major paths when calling this method:
     - **fast-path** 
         - the current barrier has already been broken, and as such, the thread throws a `BrokenBarrierException`.
         - the barrier has not yet been broken, and this thread is the last one to enter the barrier, and as such, the thread completes the barrier, executes the `Runnable` task if it exists, signals all the other threads waiting for the barrier to be broken and creates a new `Request` for the next barrier generation.
         - A thread that specifies a timeout of *zero* and does not complete the barrier will not wait for that event and throws a `TimeoutException` immediately.
     - **wait-path**
         - the barrier has not yet been broken, and this thread is not the last one to enter the barrier, and as such, the thread passively awaits for that condition to be met. 
-- **Giving-up** - While waiting for the barrier to be completed, a thread can *give-up* in the following cases:
+- **Giving-up** - While waiting for the barrier to be opened, a thread can *give-up* in the following cases:
     - the thread is interrupted and, as such, throws an `InterruptedException`, ***if and only if*** it was the first thread to be interrupted out of all the threads waiting for the barrier to be broken.
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 - **Additional notes**:.
     - If the last thread to enter the barrier throws an exception when executing the `Runnable` task, the barrier is broken.
      and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
+
+### ThreadSafeContainer
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeContainer.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeContainerTests.kt)
+
+#### Description
+A thread-safe container is a container that allows multiple threads to consume the values it 
+contains using the `consume` method.
+The container receives an array of [UnsafeValue](src/main/kotlin/pt/isel/pc/problemsets/set2/UnsafeValue.kt)s,
+that cannot be empty.
+Each value has a number of lives, that represents the number of times that value can be consumed by a thread.
+
+A thread that consumes a value from the container
+decreases the number of lives of that value by one or returns `null` if the container has no values left to consume.
+There's no garantee which value will be consumed by a thread, nor each life.
+
+#### Style of synchronization
+The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the 
+[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are 
+implemented by the JVM.
+Some examples can be seen [here](https://www.geeksforgeeks.org/happens-before-relationship-in-java/).
+
+#### Public interface
+```kotlin
+class ThreadSafeContainer<T>(
+    private val values: Array<UnsafeValue<T>>
+) {
+    fun consume(): T
+}
+```
+
+The following image illustrates the state of the container before and after a set of threads consume values from it.
+
+| ![Thread Safe Container before consumption](src/main/resources/set2/thread-safe-container-before-consumption.png) |
+|:-----------------------------------------------------------------------------------------------------------------:|
+|  ![Thread Safe Container after consumption](src/main/resources/set2/thread-safe-container-after-consumption.png)  |
+|                                          *Thread Safe Container example*                                          |
+
+#### Normal execution:
+- A thread calls `consume`, and consumes a value from the container, if there is any left.
+
+#### Conditions of execution:
+- `consume`:
+    - **Paths** - The thread can take two major paths when calling this method:
+        - **fast-path**
+            - the container has no values left to consume, and as such, null is returned.
+        - **outer-retry-path**
+            - the container has values left to consume, so the thread tries to decrement a life from the current index value, until possible. This action is associated with an **inner-retry-path**, because the thread will keep trying to decrement the life of the current value until it is not possible, because some other thread(s) decremented all lives of this value and as such, this thread is forced to leave to the **outer-retry-path**. Back to the outer loop, the thread tries to decrement a life of the next value in the array if it exists, or returns null if the array was emptied in the meantime.

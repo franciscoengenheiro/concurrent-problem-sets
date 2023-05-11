@@ -7,6 +7,7 @@ import pt.isel.pc.problemsets.utils.randomTo
 import java.util.concurrent.CyclicBarrier as JavaCyclicBarrier
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -18,8 +19,17 @@ internal class ThreadSafeContainerTests {
 
     // tests without concurrency stress:
     @Test
+    fun `Construct a container with an empty array`() {
+        assertFailsWith<IllegalArgumentException> {
+            ThreadSafeContainer(emptyArray<UnsafeValue<String>>())
+        }
+    }
+
+    @Test
     fun `Calling consume on an empty container returns null`() {
-        val container = ThreadSafeContainer(emptyArray<UnsafeValue<String>>())
+        val value = UnsafeValue(defaultValue, 1)
+        val container = ThreadSafeContainer(arrayOf(value))
+        assertNotNull(container.consume())
         assertNull(container.consume())
     }
 
@@ -70,7 +80,7 @@ internal class ThreadSafeContainerTests {
         assertEquals(nOfThreads - 1, notConsumedCounter.get())
     }
 
-    @Test
+    @RepeatedTest(10)
     fun `Multiple threads try to consume from a container with multiple values and a random set of lives`() {
         val size = 3 // 3 randomTo 5
         val nOfThreads = 3 // 10 randomTo 24

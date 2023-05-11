@@ -32,7 +32,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     private class BarrierRequest(
         var nOfThreadsWaiting: Int = 0,
         var wasBroken: Boolean = false,
-        var wasCompleted: Boolean = false
+        var wasOpened: Boolean = false
     )
 
     /**
@@ -85,7 +85,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                 try {
                     remainingNanos = barrierCondition.awaitNanos(remainingNanos)
                 } catch (ex: InterruptedException) {
-                    if (localBarrierRequest.wasCompleted) {
+                    if (localBarrierRequest.wasOpened) {
                         // the barrier was completed by another thread,
                         // so the thread must return successfully while keeping the interrupt request alive
                         Thread.currentThread().interrupt()
@@ -101,7 +101,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                     }
                 }
                 // Check if another thread broke the barrier
-                if (localBarrierRequest.wasCompleted) {
+                if (localBarrierRequest.wasOpened) {
                     return indexOfArrival // (1..parties-1)
                 }
                 // Check if the barrier was broken by another thread
@@ -158,7 +158,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     private fun executeBarrierAction() {
         val barrierActionRef = barrierAction
         if (barrierActionRef == null) {
-            barrierRequest.wasCompleted = true
+            barrierRequest.wasOpened = true
         } else {
             runCatching {
                 barrierActionRef.run()
@@ -170,7 +170,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
             }.onSuccess {
                 // the barrier action was executed successfully
                 // mark the barrier as completed
-                barrierRequest.wasCompleted = true
+                barrierRequest.wasOpened = true
             }
         }
     }
