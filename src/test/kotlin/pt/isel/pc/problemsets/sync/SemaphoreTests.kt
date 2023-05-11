@@ -6,10 +6,10 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.slf4j.LoggerFactory
-import pt.isel.pc.problemsets.sync.`with-locks`.NArySemaphoreUsingFifo
-import pt.isel.pc.problemsets.sync.`with-locks`.NArySemaphoreUsingFifoAndKernelStyle
-import pt.isel.pc.problemsets.sync.`with-locks`.UnarySemaphore
-import pt.isel.pc.problemsets.sync.`with-locks`.UnarySemaphoreUsingFifo
+import pt.isel.pc.problemsets.sync.withLocks.NArySemaphoreUsingFifo
+import pt.isel.pc.problemsets.sync.withLocks.NArySemaphoreUsingFifoAndKernelStyle
+import pt.isel.pc.problemsets.sync.withLocks.UnarySemaphore
+import pt.isel.pc.problemsets.sync.withLocks.UnarySemaphoreUsingFifo
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.spinUntilTimedWait
 import java.util.concurrent.atomic.AtomicInteger

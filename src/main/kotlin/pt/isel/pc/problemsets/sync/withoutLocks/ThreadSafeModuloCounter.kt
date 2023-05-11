@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync.`without-locks`
+package pt.isel.pc.problemsets.sync.withoutLocks
 
 import java.util.concurrent.atomic.AtomicInteger
 

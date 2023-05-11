@@ -14,6 +14,7 @@
 - [set2](#set2)
   - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
+  - [ThreadSafeCountedHolder](#threadsafecountedholder)
 
 ## Set1
 ### NAryExchanger
@@ -477,7 +478,7 @@ The barrier has the following possible states for each barrier generation:
 #### Description
 A thread-safe container is a container that allows multiple threads to consume the values it 
 contains using the `consume` method.
-The container receives an array of [UnsafeValue](src/main/kotlin/pt/isel/pc/problemsets/set2/UnsafeValue.kt)s,
+The container receives an array of [AtomicValue](src/main/kotlin/pt/isel/pc/problemsets/set2/AtomicValue.kt)s,
 that cannot be empty.
 Each value has a number of lives, that represents the number of times that value can be consumed by a thread.
 
@@ -488,13 +489,15 @@ There's no garantee which value will be consumed by a thread, nor each life.
 #### Style of synchronization
 The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the 
 [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are 
-implemented by the JVM.
+implemented by the `JVM`.
 Some examples can be seen [here](https://www.geeksforgeeks.org/happens-before-relationship-in-java/).
+
+An implementation that is not thread-safe, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
 #### Public interface
 ```kotlin
 class ThreadSafeContainer<T>(
-    private val values: Array<UnsafeValue<T>>
+    private val values: Array<AtomicValue<T>>
 ) {
     fun consume(): T
 }
@@ -508,7 +511,7 @@ The following image illustrates the state of the container before and after a se
 |                                          *Thread Safe Container example*                                          |
 
 #### Normal execution:
-- A thread calls `consume`, and consumes a value from the container, if there is any left.
+- A thread calls `consume`, and consumes a value from the container, if there is any left or returns `null` if the container is empty.
 
 #### Conditions of execution:
 - `consume`:
@@ -517,3 +520,29 @@ The following image illustrates the state of the container before and after a se
             - the container has no values left to consume, and as such, null is returned.
         - **outer-retry-path**
             - the container has values left to consume, so the thread tries to decrement a life from the current index value, until possible. This action is associated with an **inner-retry-path**, because the thread will keep trying to decrement the life of the current value until it is not possible, because some other thread(s) decremented all lives of this value and as such, this thread is forced to leave to the **outer-retry-path**. Back to the outer loop, the thread tries to decrement a life of the next value in the array if it exists, or returns null if the array was emptied in the meantime.
+
+### ThreadSafeCountedHolder
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeCountedHolder.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeCountedHolderTests.kt)
+
+#### Description
+A thread-safe-counted holder is a container
+that holds a `value` that internally has a `counter` that specifies how many times the value was used.
+If the counter reaches zero, the value is automatically *closed*, since it implements the 
+[Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface.
+
+An implementation that is not thread-safe, and that was the starting point of this implementation,
+can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
+
+#### Public interface
+```kotlin
+class ThreadSafeCountedHolder<T : Closeable>(value: T) {
+    fun tryStartUse(): T?
+    @Throws(IllegalStateException::class)
+    fun endUse()
+}
+```
+
+#### Normal execution:
+- A thread calls `tryStartUse`, and tries to start using the value, if it was not previously closed.
+- A thread calls `endUse`, and ends the use of the value, if it was not previously closed.

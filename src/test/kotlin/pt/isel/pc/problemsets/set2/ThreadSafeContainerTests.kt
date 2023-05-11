@@ -21,23 +21,23 @@ internal class ThreadSafeContainerTests {
     @Test
     fun `Construct a container with an empty array`() {
         assertFailsWith<IllegalArgumentException> {
-            ThreadSafeContainer(emptyArray<UnsafeValue<String>>())
+            ThreadSafeContainer(emptyArray<AtomicValue<String>>())
         }
     }
 
     @Test
     fun `Calling consume on an empty container returns null`() {
-        val value = UnsafeValue(defaultValue, 1)
+        val value = AtomicValue(defaultValue, 1)
         val container = ThreadSafeContainer(arrayOf(value))
         assertNotNull(container.consume())
         assertNull(container.consume())
     }
 
     @Test
-    fun `One thread uses thread safe container with only one UnsafeValue and multiple lives`() {
+    fun `One thread uses thread safe container with only one value and multiple lives`() {
         val lives = 100000
         // [0, 1, ..., size - 1]
-        val oneElementArray = arrayOf(UnsafeValue(defaultValue, lives))
+        val oneElementArray = arrayOf(AtomicValue(defaultValue, lives))
         val container = ThreadSafeContainer(oneElementArray)
         repeat(lives) {
             assertNotNull(container.consume())
@@ -46,10 +46,10 @@ internal class ThreadSafeContainerTests {
     }
 
     @RepeatedTest(3)
-    fun `One thread uses thread safe container with dynamic UnsafeValues with multiple lives`() {
+    fun `One thread uses thread safe container with dynamic values with multiple lives`() {
         val size = 100 randomTo 500
         val lives = 50 randomTo 100
-        val valuesArray = Array(size) { UnsafeValue(defaultValue, lives) }
+        val valuesArray = Array(size) { AtomicValue(defaultValue, lives) }
         val container = ThreadSafeContainer(valuesArray)
         repeat(valuesArray.size * lives) {
             assertNotNull(container.consume())
@@ -59,8 +59,8 @@ internal class ThreadSafeContainerTests {
 
     // tests with concurrency stress:
     @RepeatedTest(3)
-    fun `Multiple threads try to consume the only UnsafeValue value with one life present in the container`() {
-        val oneElementArray = arrayOf(UnsafeValue(defaultValue, 1))
+    fun `Multiple threads try to consume the only value with one life present in the container`() {
+        val oneElementArray = arrayOf(AtomicValue(defaultValue, 1))
         val container = ThreadSafeContainer(oneElementArray)
         val testHelper = MultiThreadTestHelper(10.seconds)
         val consumedCounter = AtomicInteger(0)
@@ -87,7 +87,7 @@ internal class ThreadSafeContainerTests {
         var totalLivesCounter = 0
         val valuesArray = Array(size) {
             val randomLives = 4 // 5 randomTo 10
-            UnsafeValue(defaultValue, randomLives)
+            AtomicValue(defaultValue, randomLives)
                 .also { totalLivesCounter += randomLives }
         }
         val container = ThreadSafeContainer(valuesArray)
