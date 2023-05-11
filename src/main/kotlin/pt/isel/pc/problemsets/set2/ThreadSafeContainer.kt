@@ -26,7 +26,7 @@ class ThreadSafeContainer<T>(private val values: Array<AtomicValue<T>>) {
         // fast-path -> there are no more values to be consumed
         if (firstObservedIndex == values.size) return null
         // retry-path -> retrive an index or retry if not possible
-        do {
+        while (true) {
             val outerObservedIndex = index.get()
             // if there are more values to be consumed:
             if (outerObservedIndex in values.indices) {
@@ -47,7 +47,8 @@ class ThreadSafeContainer<T>(private val values: Array<AtomicValue<T>>) {
                     // retry-path -> A live could not be decremented from a live, so the thread retries
                 }
             }
-            // observe the current index value again since it might have been changed
+            // observe the current index value again since it might have been changed,
+            // the thread might have entered the inner loop
             val secondOuterObservedIndex = index.get()
             // create a request to increment the index value or break immediately if not possible
             val nextIndex = if (secondOuterObservedIndex < values.size) secondOuterObservedIndex + 1 else break
@@ -55,8 +56,8 @@ class ThreadSafeContainer<T>(private val values: Array<AtomicValue<T>>) {
             // is inside the atomic reference
             index.compareAndSet(secondOuterObservedIndex, nextIndex)
             // retry
-        } while (true)
-        println(Thread.currentThread().name + " - " + "no more values")
+        }
+        println(Thread.currentThread().name + " - " + "found no more values")
         return null
     }
 }

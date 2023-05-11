@@ -28,12 +28,12 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
             // since the value variable is marked as volatile, the Java Memory Model garantees that
             // a writing to this variable happens-before this next read.
             value ?: return null
-            // TODO("try to increment the counter if its still possible")
             val observedCounter = useCounter.get()
-            val newCounterValue = if (observedCounter > 0)
+            val newCounterValue = if (observedCounter > 0) {
                 observedCounter + 1
-            else
+            } else {
                 return null
+            }
             if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
                 return value
             }
@@ -52,23 +52,29 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
         val initialObservedCounter = useCounter.get()
         if (initialObservedCounter == 0)
             throw IllegalStateException("The value is already closed.")
+        // retry-path -> the value is not null, so the thread tries to decrement the usage counter
+        // and close if possible
         while (true) {
             val observedCounter = useCounter.get()
-            val newCounterValue = if (observedCounter > 0)
+            val newCounterValue = if (observedCounter > 0) {
                 observedCounter - 1
-            else
+            } else {
                 throw IllegalStateException("The value is already closed.")
+            }
             // try to decrement it if observed lives value is still the same value that
             // is inside the atomic reference
             if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
                 val observedCounterAfterDec = useCounter.get()
+                println(Thread.currentThread().name + "decremented the value")
                 if (observedCounterAfterDec == 0) {
+                    // return early if the value is already null
                     value ?: return
                     value?.close()
                     value = null
-                    return
                 }
+                return
             }
+            // retry
         }
     }
 }

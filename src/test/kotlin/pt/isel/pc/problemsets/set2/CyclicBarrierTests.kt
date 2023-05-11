@@ -237,7 +237,7 @@ class CyclicBarrierTests {
         assertFalse(barrier.isBroken())
     }
 
-    @Test
+    @RepeatedTest(10)
     fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
         val parties = 2
         val barrier = CyclicBarrier(parties)
@@ -257,7 +257,7 @@ class CyclicBarrierTests {
             //  value and entering the barrier, another thread might have done that first")
             // TODO("how can I ensure the thread that retrieves the counter, must be the one
             //  to enter, cannot use a lock otherwise it will keep it for the duration of
-            //   of the barrier await")
+            //   of the await at the barrier")
             val actualIndex = barrier.await()
             val expectedIndex = indicesMap[threadId]
             requireNotNull(expectedIndex)
