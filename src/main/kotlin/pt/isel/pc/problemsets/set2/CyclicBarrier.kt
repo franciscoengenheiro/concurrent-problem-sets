@@ -70,7 +70,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                 barrierRequest = BarrierRequest()
                 return 0
             }
-            // The thread does not want to wait for the barrier to be broken
+            // fast-path(3) - the thread does not want to wait for the barrier to be broken
             if (timeout == Duration.ZERO) {
                 breakBarrier()
                 // give-up immediately
@@ -86,7 +86,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                     remainingNanos = barrierCondition.awaitNanos(remainingNanos)
                 } catch (ex: InterruptedException) {
                     if (localBarrierRequest.wasOpened) {
-                        // the barrier was completed by another thread,
+                        // the barrier was opened by another thread,
                         // so the thread must return successfully while keeping the interrupt request alive
                         Thread.currentThread().interrupt()
                         return indexOfArrival // (1..parties-1)
@@ -94,7 +94,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                         // the barrier was broken by another thread
                         throw BrokenBarrierException()
                     } else {
-                        // the barrier was not completed nor broken, but this thread gave up, so the
+                        // the barrier was not opened nor broken, but this thread gave up, so the
                         // barrier must be broken by this thread
                         breakBarrier()
                         throw InterruptedException()
@@ -110,7 +110,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                 }
                 if (remainingNanos <= 0) {
                     // give-up by timeout
-                    // the barrier was not broken nor completed, but this thread gave up, so the
+                    // the barrier was not broken nor opened, but this thread gave up, so the
                     // barrier must be broken by this thread
                         breakBarrier()
                     throw TimeoutException()
@@ -151,7 +151,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * Executes the [barrierAction] if it exists.
      * If its execution throws a [Throwable], the barrier is immediately broken and
      * all waiting threads are signaled.
-     * The barrier is completed if the [barrierAction] is null or if it does not throw any [Throwable] when executed.
+     * The barrier is opened if the [barrierAction] is null or if it does not throw any [Throwable] when executed.
      * This method should only be called inside a thread-safe environment, since it checks and
      * alters the internal state of the barrier.
      */
@@ -169,7 +169,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                 throw it
             }.onSuccess {
                 // the barrier action was executed successfully
-                // mark the barrier as completed
+                // mark the barrier as opened
                 barrierRequest.wasOpened = true
             }
         }

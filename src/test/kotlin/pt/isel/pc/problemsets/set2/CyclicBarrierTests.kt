@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.randomTo
 import java.util.concurrent.BrokenBarrierException
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
@@ -15,7 +16,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-class CyclicBarrierTests {
+internal class CyclicBarrierTests {
 
     private data class SimpleTask(var done: Boolean = false)
 
@@ -237,13 +238,13 @@ class CyclicBarrierTests {
         assertFalse(barrier.isBroken())
     }
 
-    @RepeatedTest(3)
+    @RepeatedTest(5)
     fun `Check if indexes of arrival match the order of which the threads entered the barrier with multiple threads`() {
         val parties = 10 randomTo 24
         val barrier = CyclicBarrier(parties)
         val testHelper = MultiThreadTestHelper(15.seconds)
         val expectedSet = List(parties) { it }.reversed().toSet()
-        val actualIndicesList: MutableList<Int> = mutableListOf()
+        val actualIndicesList = ConcurrentLinkedQueue<Int>()
         testHelper.createAndStartMultipleThreads(parties) { _, _ ->
             val actualIndex = barrier.await()
             // Add the value to the indices list

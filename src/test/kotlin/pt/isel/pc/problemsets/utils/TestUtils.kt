@@ -22,6 +22,7 @@ fun spinUntilTimedWait(th: Thread, timeout: Duration = 1.seconds) {
 }
 
 /**
- * Generates a random number between this [Int] and [end] (inclusive).
+ * Returns a random number between this [Int] and [end] (inclusive).
+ * @param end the end of the range.
  */
-infix fun Int.randomTo(end: Int) = (this..end).random()
+infix fun <T: Number> T.randomTo(end: T): T = (this.toLong()..end.toLong()).random() as T

@@ -13,7 +13,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.time.Duration.Companion.seconds
 
-class ThreadSafeCountedHolderTests {
+internal class ThreadSafeCountedHolderTests {
 
     private class TestResource : Closeable {
         val closedCounter = AtomicInteger(0)

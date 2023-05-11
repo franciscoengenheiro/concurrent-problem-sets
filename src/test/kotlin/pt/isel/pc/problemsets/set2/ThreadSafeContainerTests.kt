@@ -4,7 +4,6 @@ import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.randomTo
-import java.util.concurrent.CyclicBarrier as JavaCyclicBarrier
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -12,6 +11,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import java.util.concurrent.CyclicBarrier as JavaCyclicBarrier
 
 internal class ThreadSafeContainerTests {
 
