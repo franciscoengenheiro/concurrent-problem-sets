@@ -175,8 +175,6 @@ internal class CyclicBarrierTests {
         // awake one of the threads to signal the other that the barrier
         // has been broken
         testHelper.join()
-        println(interruptedCounter.get())
-        println(interruptedAfterBrokenCounter.get())
         assertEquals(1, interruptedCounter.get())
         assertEquals(1, interruptedAfterBrokenCounter.get())
     }

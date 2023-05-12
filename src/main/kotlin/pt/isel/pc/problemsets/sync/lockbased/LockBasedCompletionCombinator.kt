@@ -30,6 +30,7 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                     if (success != null) {
                         listToReturn.add(success)
                     } else {
+                        // an error ocurred return the error
                         requireNotNull(error)
                         maybeError = error
                         isDone = true
@@ -40,6 +41,11 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                         isDone = true
                     }
                 }
+                // Reminder: a future can only be completed with a value or an exception,
+                // outside the lock, because the completion stage may have an arbitrary number
+                // of callbacks that execute after its completion, and we do not know how long they will take
+                // to execute. If we completed the future inside the lock, we would be holding the lock
+                // indefinitely.
                 if (maybeSuccess != null) {
                     futureToReturn.complete(maybeSuccess)
                 } else if (maybeError != null) {
@@ -52,7 +58,50 @@ class LockBasedCompletionCombinator : CompletionCombinator {
 
     @Throws(CombinationError::class, IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
-        TODO("Not yet implemented")
+        require(inputStages.isNotEmpty()) { "inputFutures must not be empty" }
+        val futureToReturn = CompletableFuture<T>()
+        val listOfThrowables: MutableList<Throwable> = mutableListOf()
+        val lock = ReentrantLock()
+        var isDone = false
+        inputStages.forEach { inputFuture ->
+            inputFuture.handle { success: T?, error: Throwable? ->
+                var maybeSuccess: T? = null
+                var maybeError: List<Throwable>? = null
+                lock.withLock {
+                    if (isDone) {
+                        return@handle
+                    }
+                    if (success != null) {
+                        maybeSuccess = success
+                        isDone = true
+                        return@withLock
+                    } else {
+                        requireNotNull(error)
+                        listOfThrowables.add(error)
+                    }
+                    // if all futures have failed, return the list of errors
+                    if (listOfThrowables.size == inputStages.size) {
+                        maybeError = listOfThrowables
+                        isDone = true
+                    }
+                }
+                // Reminder: a future can only be completed with a value or an exception,
+                // outside the lock, because the completion stage may have an arbitrary number
+                // of callbacks that execute after its completion, and we do not know how long they will take
+                // to execute. If we completed the future inside the lock, we would be holding the lock
+                // indefinitely.
+                if (maybeSuccess != null) {
+                    futureToReturn.complete(maybeSuccess)
+                } else if (maybeError != null) {
+                    val catchedThrowables = maybeError
+                    requireNotNull(catchedThrowables)
+                    futureToReturn.completeExceptionally(
+                        CombinationError("All futures failed", catchedThrowables)
+                    )
+                }
+            }
+        }
+        return futureToReturn
     }
 
 }

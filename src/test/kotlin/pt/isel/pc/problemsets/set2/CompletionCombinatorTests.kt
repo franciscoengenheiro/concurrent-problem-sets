@@ -1,6 +1,5 @@
 package pt.isel.pc.problemsets.set2
 
-import com.sun.net.httpserver.Authenticator.Success
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
@@ -9,13 +8,13 @@ import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import pt.isel.pc.problemsets.sync.lockbased.LockBasedCompletionCombinator
 import pt.isel.pc.problemsets.utils.randomTo
 import java.io.IOException
-import java.lang.ArithmeticException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -29,9 +28,9 @@ internal class CompletionCombinatorTests {
     private val errorMsg = "Expected error"
 
     @RepeatedTest(3)
-    fun `Combinate all future's execution`() {
+    fun `Combine all future's execution`() {
         val start = Instant.now()
-        val nrFutures = 10 randomTo 25
+        val nrFutures = 50 randomTo 100
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
             delayExecution(Duration.ofMillis(it * durationInMillis)) { true }
@@ -46,7 +45,7 @@ internal class CompletionCombinatorTests {
     }
 
     @RepeatedTest(3)
-    fun `Combinate all future's execution but one of the futures throws an exception`() {
+    fun `Combine all future's execution but one of the futures throws an exception`() {
         val start = Instant.now()
         val nrFutures = 50 randomTo 100
         val durationInMillisForError = 100L randomTo 200L
@@ -69,24 +68,30 @@ internal class CompletionCombinatorTests {
     }
 
     @RepeatedTest(3)
-    fun `Combinate any future's execution`() {
-        val nrFutures = 10 randomTo 25
+    fun `Combine any future's execution`() {
+        val start = Instant.now()
+        val nrFutures = 500 randomTo 1000
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
             delayExecution(Duration.ofMillis(it * durationInMillis)) { it }
         }
         val future = compCombinator.any(futures)
         val result = future.toCompletableFuture().get()
+        val delta = Duration.between(start, Instant.now())
+        // ensure the duration of the test should be at least the duration of the
+        // delayed execution of the future that completes first.
+        assertTrue{ delta >= Duration.ofMillis(durationInMillis) }
+        // has the smaller time to complete
         assertTrue(result == 1L)
     }
 
     @RepeatedTest(3)
-    fun `Combinate any future's execution but some futures throw an exception`() {
-        val nrFutures = 10 randomTo 25
+    fun `Combine any future's execution but some futures throw an exception`() {
+        val nrFutures = 500 randomTo 1000
         var successCounter = 0
         var failureCounter = 0
         val futures: List<CompletableFuture<Any>> = (1L..nrFutures).map {
-            if (it % 2 == 0L){
+            if (it % 2 == 0L) {
                 delayExecution(Duration.ofMillis(100L)) {
                     it
                 }
@@ -110,10 +115,10 @@ internal class CompletionCombinatorTests {
     }
 
     @RepeatedTest(3)
-    fun `Combinate any future's execution but all futures throw an exception`() {
-        val nrFutures = 10 randomTo 24
+    fun `Combine any future's execution but all futures throw an exception`() {
+        val nrFutures = 500 randomTo 1000
         val listThrowables = mutableListOf<Throwable>()
-        val futures: List<CompletableFuture<Nothing>> = (1L..nrFutures).map {
+        val futures: List<CompletableFuture<Nothing>> = (0L..nrFutures).map {
             val randomTh = randomThrowable
             listThrowables.add(randomTh)
             delayExecution(Duration.ofMillis(100L)) {
@@ -125,11 +130,11 @@ internal class CompletionCombinatorTests {
             future.toCompletableFuture().get()
         }.onFailure {
             assertIs<ExecutionException>(it)
-            assertIs<CombinationError>(it)
+            val throwable = it.cause
+            assertIs<CombinationError>(throwable)
             // ensure all throwables were wrapped correctly in the error list
-            it.throwables.forEachIndexed { index, th ->
-                val expectedTh = listThrowables[index]
-                assertInstanceOf(expectedTh::class.java, th::class.java)
+            throwable.throwables.forEachIndexed { index, th ->
+                assertContains(listThrowables, th)
             }
         }
     }
