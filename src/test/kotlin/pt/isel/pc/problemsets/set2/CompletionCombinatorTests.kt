@@ -6,7 +6,6 @@ import org.junit.jupiter.params.provider.MethodSource
 import pt.isel.pc.problemsets.sync.combinator.CombinationError
 import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import pt.isel.pc.problemsets.sync.lockbased.LockBasedCompletionCombinator
-import pt.isel.pc.problemsets.sync.lockfree.LockFreeCompletionCombinator
 import pt.isel.pc.problemsets.utils.randomTo
 import java.io.IOException
 import java.time.Duration
