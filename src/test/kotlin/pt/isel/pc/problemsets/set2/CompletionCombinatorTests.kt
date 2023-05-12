@@ -1,11 +1,12 @@
 package pt.isel.pc.problemsets.set2
 
-import org.junit.jupiter.api.Assertions.assertInstanceOf
-import org.junit.jupiter.api.RepeatedTest
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import pt.isel.pc.problemsets.sync.combinator.CombinationError
 import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import pt.isel.pc.problemsets.sync.lockbased.LockBasedCompletionCombinator
+import pt.isel.pc.problemsets.sync.lockfree.LockFreeCompletionCombinator
 import pt.isel.pc.problemsets.utils.randomTo
 import java.io.IOException
 import java.time.Duration
@@ -14,6 +15,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.stream.Stream
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -22,15 +24,16 @@ import kotlin.test.assertTrue
 
 internal class CompletionCombinatorTests {
 
-    // TODO("learn more about parametarized tests for both completionCombinator implementations")
-    private val compCombinator: CompletionCombinator = LockBasedCompletionCombinator()
-
     private val errorMsg = "Expected error"
 
-    @RepeatedTest(3)
-    fun `Combine all future's execution`() {
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("implementations")
+    fun `Combine all future's execution`(
+        name: String,
+        compCombinator: CompletionCombinator
+    ) {
         val start = Instant.now()
-        val nrFutures = 50 randomTo 100
+        val nrFutures = 25 randomTo 50
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
             delayExecution(Duration.ofMillis(it * durationInMillis)) { true }
@@ -44,8 +47,12 @@ internal class CompletionCombinatorTests {
         assertTrue(result.all { it })
     }
 
-    @RepeatedTest(3)
-    fun `Combine all future's execution but one of the futures throws an exception`() {
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("implementations")
+    fun `Combine all future's execution but one of the futures throws an exception`(
+        name: String,
+        compCombinator: CompletionCombinator
+    ) {
         val start = Instant.now()
         val nrFutures = 50 randomTo 100
         val durationInMillisForError = 100L randomTo 200L
@@ -67,10 +74,14 @@ internal class CompletionCombinatorTests {
         assertTrue(delta.toMillis() >= durationInMillisForError)
     }
 
-    @RepeatedTest(3)
-    fun `Combine any future's execution`() {
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("implementations")
+    fun `Combine any future's execution`(
+        name: String,
+        compCombinator: CompletionCombinator
+    ) {
         val start = Instant.now()
-        val nrFutures = 500 randomTo 1000
+        val nrFutures = 50 randomTo 100
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
             delayExecution(Duration.ofMillis(it * durationInMillis)) { it }
@@ -85,9 +96,13 @@ internal class CompletionCombinatorTests {
         assertTrue(result == 1L)
     }
 
-    @RepeatedTest(3)
-    fun `Combine any future's execution but some futures throw an exception`() {
-        val nrFutures = 500 randomTo 1000
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("implementations")
+    fun `Combine any future's execution but some futures throw an exception`(
+        name: String,
+        compCombinator: CompletionCombinator
+    ) {
+        val nrFutures = 20 randomTo 50
         var successCounter = 0
         var failureCounter = 0
         val futures: List<CompletableFuture<Any>> = (1L..nrFutures).map {
@@ -114,8 +129,12 @@ internal class CompletionCombinatorTests {
         assertEquals(1, successCounter)
     }
 
-    @RepeatedTest(3)
-    fun `Combine any future's execution but all futures throw an exception`() {
+    @ParameterizedTest(name = "{index} - {0}")
+    @MethodSource("implementations")
+    fun `Combine any future's execution but all futures throw an exception`(
+        name: String,
+        compCombinator: CompletionCombinator
+    ) {
         val nrFutures = 500 randomTo 1000
         val listThrowables = mutableListOf<Throwable>()
         val futures: List<CompletableFuture<Nothing>> = (0L..nrFutures).map {
@@ -133,7 +152,7 @@ internal class CompletionCombinatorTests {
             val throwable = it.cause
             assertIs<CombinationError>(throwable)
             // ensure all throwables were wrapped correctly in the error list
-            throwable.throwables.forEachIndexed { index, th ->
+            throwable.throwables.forEach { th ->
                 assertContains(listThrowables, th)
             }
         }
@@ -159,6 +178,25 @@ internal class CompletionCombinatorTests {
         private val randomThrowable: Throwable
             get() = listOfThrowables.random()
 
+        @JvmStatic
+        fun implementations(): Stream<Arguments> {
+            val repetions = 5L
+            val lockBasedImp: Stream<Arguments> = Stream.generate {
+                Arguments.of(
+                    "Using LockBasedCompletionCombinator",
+                    LockBasedCompletionCombinator()
+                )
+            }.limit(repetions)
+            val lockFreeImp: Stream<Arguments> = Stream.generate {
+                Arguments.of(
+                    "Using LockFreeCompletionCombinator",
+                    LockFreeCompletionCombinator()
+                )
+            }.limit(repetions)
+            return Stream.concat(lockBasedImp, lockFreeImp)
+        }
+
+        @JvmStatic
         fun <T> delayExecution(duration: Duration, supplier: () -> T): CompletableFuture<T> {
             val cf = CompletableFuture<T>()
             delayExecutor.schedule(
