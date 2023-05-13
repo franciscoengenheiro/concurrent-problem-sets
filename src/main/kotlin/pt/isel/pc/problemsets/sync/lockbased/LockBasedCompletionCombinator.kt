@@ -62,18 +62,18 @@ class LockBasedCompletionCombinator : CompletionCombinator {
         val futureToReturn = CompletableFuture<T>()
         val listOfThrowables: MutableList<Throwable> = mutableListOf()
         val lock = ReentrantLock()
-        var isDone = false
+        var wasCompleted = false
         inputStages.forEach { inputFuture ->
             inputFuture.handle { success: T?, error: Throwable? ->
                 var maybeSuccess: T? = null
                 var maybeError: List<Throwable>? = null
                 lock.withLock {
-                    if (isDone) {
+                    if (wasCompleted) {
                         return@handle
                     }
                     if (success != null) {
                         maybeSuccess = success
-                        isDone = true
+                        wasCompleted = true
                         return@withLock
                     } else {
                         requireNotNull(error)
@@ -82,7 +82,7 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                     // if all futures have failed, return the list of errors
                     if (listOfThrowables.size == inputStages.size) {
                         maybeError = listOfThrowables
-                        isDone = true
+                        wasCompleted = true
                     }
                 }
                 // Reminder: a future can only be completed with a value or an exception,

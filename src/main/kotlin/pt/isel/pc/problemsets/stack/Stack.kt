@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync.stack
+package pt.isel.pc.problemsets.stack
 
 /**
  * A stack that supports push and pop operations.

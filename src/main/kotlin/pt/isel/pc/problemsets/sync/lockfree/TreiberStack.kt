@@ -1,6 +1,7 @@
 package pt.isel.pc.problemsets.sync.lockfree
 
-import pt.isel.pc.problemsets.sync.stack.Stack
+import pt.isel.pc.problemsets.stack.Stack
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class TreiberStack<T> : Stack<T> {
@@ -11,7 +12,10 @@ class TreiberStack<T> : Stack<T> {
         var next: Node<T>? = null
     }
 
+    private val counter = AtomicInteger(0)
     private val head = AtomicReference<Node<T>>(null)
+    val size: Int
+        get() = counter.get()
 
     override fun push(value: T) {
         val node = Node(value = value)
@@ -19,6 +23,8 @@ class TreiberStack<T> : Stack<T> {
             val observedHead: Node<T>? = head.get()
             node.next = observedHead
             if (head.compareAndSet(observedHead, node)) {
+                // increment size
+                counter.incrementAndGet()
                 return
             }
             // retry
@@ -30,9 +36,36 @@ class TreiberStack<T> : Stack<T> {
             val observedHead: Node<T> = head.get() ?: return null
             val observedHeadNext = observedHead.next
             if (head.compareAndSet(observedHead, observedHeadNext)) {
+                // decrement size
+                counter.decrementAndGet()
                 return observedHead.value
             }
             // retry
         }
     }
+
+    // TODO("or implement Iterable interface?")
+    fun toList(): List<T> {
+        // fast-path -> if the stack is empty, return an empty list
+        head.get() ?: return emptyList()
+        // retry-path -> if the stack is not empty, try to return a list with its elements
+        do {
+            val observedHead = head.get() ?: return emptyList()
+            val newList = mutableListOf(observedHead.value)
+            var current = observedHead.next
+            while (current != null) {
+                newList.add(current.value)
+                current = current.next
+            }
+            // only return the list if the head did not change
+            if (head.compareAndSet(observedHead, observedHead)) {
+                // TODO("nothing garantees that even if the head did not change, the list returned
+                //  is the list when the head was observed? Or when the head update with a new value
+                //  is never the same?")
+                return newList
+            }
+            // else, retry
+        } while(true)
+    }
+
 }

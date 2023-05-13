@@ -29,23 +29,42 @@ internal class CompletionCombinatorTests {
     // Method: all
     @ParameterizedTest(name = "{index} - {0}")
     @MethodSource("implementations")
-    fun `Combine all future's execution using a single thread executor`(
+    fun `Combine all future's execution`(
         name: String,
         compCombinator: CompletionCombinator,
         executor: ScheduledExecutorService
     ) {
         val start = Instant.now()
-        val nrFutures = 25 randomTo 50
-        val durationInMillis = 100L randomTo 200L
+        val nrFutures = 10 randomTo 25
+        val durationInMillis = 250L
+        var biggestDelayedDuration = 0L
+        var totalDuration = 0L
         val futures = (1L..nrFutures).map {
-            delayExecution(executor, Duration.ofMillis(it * durationInMillis)) { true }
+            val delay = it * durationInMillis
+            if (delay > biggestDelayedDuration) {
+                biggestDelayedDuration = delay
+            }
+            totalDuration += delay
+            delayExecution(executor, Duration.ofMillis(delay)) { true }
         }
         val allFutures = compCombinator.all(futures)
         val result = allFutures.toCompletableFuture().get()
         val delta = Duration.between(start, Instant.now())
-        // ensure the duration of the test should be at least the duration of all
-        // future delayed executions summed up.
-        assertTrue(delta.toMillis() >= nrFutures * durationInMillis)
+        if (executor::class == singleThreadDelayExecutor::class) {
+            // ensure the duration of the test should be at least the duration of all
+            // future delayed executions summed up if the executor is single threaded
+            // since the futures are executed sequentially
+            assertTrue(delta.toMillis() >= nrFutures * durationInMillis)
+        }
+        if (executor::class == multiThreadDelayExecutor::class) {
+            // ensure the duration of the test should be at least the duration of the
+            // biggest delayed execution and at most the duration of all future delayed
+            // executions summed up if the executor is multithreaded since the futures
+            // are executed in parallel
+            assertTrue(delta.toMillis() >= biggestDelayedDuration)
+            assertTrue(delta.toMillis() <= totalDuration)
+        }
+        assertEquals(nrFutures, result.size)
         assertTrue(result.all { it })
     }
 
@@ -58,9 +77,9 @@ internal class CompletionCombinatorTests {
     ) {
         val start = Instant.now()
         val nrFutures = 50 randomTo 100
-        val durationInMillisForError = 100L randomTo 200L
+        val durationInMillisForError = 1000L randomTo 2000L
         val futures = (1L..nrFutures).map {
-            delayExecution(executor, Duration.ofMillis(it * 100)) { true }
+            delayExecution(executor) { true }
         }
         val errorFuture =
             delayExecution<Boolean>(executor, Duration.ofMillis(durationInMillisForError)) {
@@ -76,7 +95,6 @@ internal class CompletionCombinatorTests {
         // delayed execution of the future that throws an exception.
         assertTrue(delta.toMillis() >= durationInMillisForError)
     }
-
 
     // Method: any
     @ParameterizedTest(name = "{index} - {0}")
@@ -99,9 +117,9 @@ internal class CompletionCombinatorTests {
         val result = future.toCompletableFuture().get()
         val delta = Duration.between(start, Instant.now())
         // ensure the duration of the test should be at least the duration of the
-        // delayed execution of the future that completes first.
+        // delayed execution of the future that completes first (which will be the
+        // one with the smallest delay, in this case the first one)
         assertTrue{ delta >= Duration.ofMillis(durationInMillis) }
-        // has the smaller time to complete
         assertTrue(result == 1L)
     }
 
@@ -112,7 +130,7 @@ internal class CompletionCombinatorTests {
         compCombinator: CompletionCombinator,
         executor: ScheduledExecutorService
     ) {
-        val nrFutures = 20 randomTo 50
+        val nrFutures = 50 randomTo 100
         var successCounter = 0
         var failureCounter = 0
         val futures: List<CompletableFuture<Any>> = (1L..nrFutures).map {
@@ -146,7 +164,7 @@ internal class CompletionCombinatorTests {
     ) {
         val nrFutures = 500 randomTo 1000
         val listThrowables = mutableListOf<Throwable>()
-        val futures: List<CompletableFuture<Nothing>> = (0L..nrFutures).map {
+        val futures: List<CompletableFuture<Nothing>> = (1L..nrFutures).map {
             val randomTh = randomThrowable
             listThrowables.add(randomTh)
             delayExecution(executor) {
@@ -157,10 +175,10 @@ internal class CompletionCombinatorTests {
         runCatching {
             future.toCompletableFuture().get()
         }.onFailure {
-            // because it was executed inside a thread pool, the exception is wrapped
+            // because it was executed inside a thread pool, the throwable is wrapped
             assertIs<ExecutionException>(it)
             val throwable = it.cause
-            // unwrap the exception
+            // unwrap the execution exception
             assertIs<AggregationError>(throwable)
             assertEquals(nrFutures, throwable.throwables.size)
             // ensure all throwables were catched correctly in the aggregation error list
@@ -190,32 +208,31 @@ internal class CompletionCombinatorTests {
             get() = listOfThrowables.random()
 
         @JvmStatic
-        fun implementations(): Stream<Arguments> {
-            return (1..5).flatMap {
+        fun implementations(): Stream<Arguments> =
+            (1..5).flatMap {
                 listOf(
                     Arguments.of(
                         "Using ${LockBasedCompletionCombinator::class.simpleName} with single-thread executor",
                         LockBasedCompletionCombinator(),
-                        singleThreadDelayExecutor
+                        Executors.newSingleThreadScheduledExecutor()
                     ),
                     Arguments.of(
                         "Using ${LockBasedCompletionCombinator::class.simpleName} with multi-thread executor",
                         LockBasedCompletionCombinator(),
-                        multiThreadDelayExecutor
+                        Executors.newScheduledThreadPool(16)
                     ),
                     Arguments.of(
                         "Using ${LockFreeCompletionCombinator::class.simpleName} with single-thread executor",
                         LockFreeCompletionCombinator(),
-                        singleThreadDelayExecutor
+                        Executors.newSingleThreadScheduledExecutor()
                     ),
                     Arguments.of(
                         "Using ${LockFreeCompletionCombinator::class.simpleName} with multi-thread executor",
                         LockFreeCompletionCombinator(),
-                        multiThreadDelayExecutor
+                        Executors.newScheduledThreadPool(16)
                     )
                 )
             }.stream()
-        }
 
         @JvmStatic
         fun <T> delayExecution(

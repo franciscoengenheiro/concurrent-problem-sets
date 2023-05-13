@@ -1,6 +1,6 @@
 package pt.isel.pc.problemsets.sync.lockbased
 
-import pt.isel.pc.problemsets.sync.stack.Stack
+import pt.isel.pc.problemsets.stack.Stack
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
