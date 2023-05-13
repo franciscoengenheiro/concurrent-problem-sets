@@ -24,9 +24,9 @@ interface CompletionCombinator {
      * If *all* the input stages complete exceptionally, the returned stage also completes exceptionally.
      * @param inputStages the input stages to combine.
      * @return the result of the completion stage's combination.
-     * @throws CombinationError if all the input stages complete exceptionally.
+     * @throws AggregationError if all the input stages complete exceptionally.
      * @throws IllegalArgumentException if the input list is empty.
      */
-    @Throws(CombinationError::class, IllegalArgumentException::class)
+    @Throws(AggregationError::class, IllegalArgumentException::class)
     fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T>
 }

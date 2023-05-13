@@ -3,7 +3,7 @@ package pt.isel.pc.problemsets.set2
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
-import pt.isel.pc.problemsets.sync.combinator.CombinationError
+import pt.isel.pc.problemsets.sync.combinator.AggregationError
 import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import pt.isel.pc.problemsets.sync.lockbased.LockBasedCompletionCombinator
 import pt.isel.pc.problemsets.utils.randomTo
@@ -13,6 +13,7 @@ import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.stream.Stream
 import kotlin.test.assertContains
@@ -25,17 +26,19 @@ internal class CompletionCombinatorTests {
 
     private val errorMsg = "Expected error"
 
+    // Method: all
     @ParameterizedTest(name = "{index} - {0}")
     @MethodSource("implementations")
-    fun `Combine all future's execution`(
+    fun `Combine all future's execution using a single thread executor`(
         name: String,
-        compCombinator: CompletionCombinator
+        compCombinator: CompletionCombinator,
+        executor: ScheduledExecutorService
     ) {
         val start = Instant.now()
         val nrFutures = 25 randomTo 50
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
-            delayExecution(Duration.ofMillis(it * durationInMillis)) { true }
+            delayExecution(executor, Duration.ofMillis(it * durationInMillis)) { true }
         }
         val allFutures = compCombinator.all(futures)
         val result = allFutures.toCompletableFuture().get()
@@ -50,16 +53,17 @@ internal class CompletionCombinatorTests {
     @MethodSource("implementations")
     fun `Combine all future's execution but one of the futures throws an exception`(
         name: String,
-        compCombinator: CompletionCombinator
+        compCombinator: CompletionCombinator,
+        executor: ScheduledExecutorService
     ) {
         val start = Instant.now()
         val nrFutures = 50 randomTo 100
         val durationInMillisForError = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
-            delayExecution(Duration.ofMillis(it * 100)) { true }
+            delayExecution(executor, Duration.ofMillis(it * 100)) { true }
         }
         val errorFuture =
-            delayExecution<Boolean>(Duration.ofMillis(durationInMillisForError)) {
+            delayExecution<Boolean>(executor, Duration.ofMillis(durationInMillisForError)) {
                 throw RuntimeException(errorMsg)
             }
         val allFutures = compCombinator.all(futures + errorFuture)
@@ -73,17 +77,23 @@ internal class CompletionCombinatorTests {
         assertTrue(delta.toMillis() >= durationInMillisForError)
     }
 
+
+    // Method: any
     @ParameterizedTest(name = "{index} - {0}")
     @MethodSource("implementations")
     fun `Combine any future's execution`(
         name: String,
-        compCombinator: CompletionCombinator
+        compCombinator: CompletionCombinator,
+        executor: ScheduledExecutorService
     ) {
         val start = Instant.now()
         val nrFutures = 50 randomTo 100
         val durationInMillis = 100L randomTo 200L
         val futures = (1L..nrFutures).map {
-            delayExecution(Duration.ofMillis(it * durationInMillis)) { it }
+            delayExecution(
+                executor,
+                Duration.ofMillis(it * durationInMillis)
+            ) { it }
         }
         val future = compCombinator.any(futures)
         val result = future.toCompletableFuture().get()
@@ -99,18 +109,17 @@ internal class CompletionCombinatorTests {
     @MethodSource("implementations")
     fun `Combine any future's execution but some futures throw an exception`(
         name: String,
-        compCombinator: CompletionCombinator
+        compCombinator: CompletionCombinator,
+        executor: ScheduledExecutorService
     ) {
         val nrFutures = 20 randomTo 50
         var successCounter = 0
         var failureCounter = 0
         val futures: List<CompletableFuture<Any>> = (1L..nrFutures).map {
             if (it % 2 == 0L) {
-                delayExecution(Duration.ofMillis(100L)) {
-                    it
-                }
+                delayExecution(executor) { it }
             } else {
-                delayExecution(Duration.ofMillis(100L)) {
+                delayExecution(executor) {
                     throw randomThrowable
                 }
             }
@@ -132,14 +141,15 @@ internal class CompletionCombinatorTests {
     @MethodSource("implementations")
     fun `Combine any future's execution but all futures throw an exception`(
         name: String,
-        compCombinator: CompletionCombinator
+        compCombinator: CompletionCombinator,
+        executor: ScheduledExecutorService
     ) {
         val nrFutures = 500 randomTo 1000
         val listThrowables = mutableListOf<Throwable>()
         val futures: List<CompletableFuture<Nothing>> = (0L..nrFutures).map {
             val randomTh = randomThrowable
             listThrowables.add(randomTh)
-            delayExecution(Duration.ofMillis(100L)) {
+            delayExecution(executor) {
                 throw randomTh
             }
         }
@@ -147,10 +157,13 @@ internal class CompletionCombinatorTests {
         runCatching {
             future.toCompletableFuture().get()
         }.onFailure {
+            // because it was executed inside a thread pool, the exception is wrapped
             assertIs<ExecutionException>(it)
             val throwable = it.cause
-            assertIs<CombinationError>(throwable)
-            // ensure all throwables were wrapped correctly in the error list
+            // unwrap the exception
+            assertIs<AggregationError>(throwable)
+            assertEquals(nrFutures, throwable.throwables.size)
+            // ensure all throwables were catched correctly in the aggregation error list
             throwable.throwables.forEach { th ->
                 assertContains(listThrowables, th)
             }
@@ -158,9 +171,8 @@ internal class CompletionCombinatorTests {
     }
 
     companion object {
-        // TODO("might need to use a thread pool with more than one thread, to simulate
-        //  the execution of the futures in parallel (without execution delay)")
-        private val delayExecutor = Executors.newSingleThreadScheduledExecutor()
+        private val singleThreadDelayExecutor = Executors.newSingleThreadScheduledExecutor()
+        private val multiThreadDelayExecutor = Executors.newScheduledThreadPool(16)
         private val listOfThrowables: List<Throwable> = listOf(
             ArithmeticException(),
             ArrayIndexOutOfBoundsException(),
@@ -179,26 +191,40 @@ internal class CompletionCombinatorTests {
 
         @JvmStatic
         fun implementations(): Stream<Arguments> {
-            val repetions = 5L
-            val lockBasedImp: Stream<Arguments> = Stream.generate {
-                Arguments.of(
-                    "Using LockBasedCompletionCombinator",
-                    LockBasedCompletionCombinator()
+            return (1..5).flatMap {
+                listOf(
+                    Arguments.of(
+                        "Using ${LockBasedCompletionCombinator::class.simpleName} with single-thread executor",
+                        LockBasedCompletionCombinator(),
+                        singleThreadDelayExecutor
+                    ),
+                    Arguments.of(
+                        "Using ${LockBasedCompletionCombinator::class.simpleName} with multi-thread executor",
+                        LockBasedCompletionCombinator(),
+                        multiThreadDelayExecutor
+                    ),
+                    Arguments.of(
+                        "Using ${LockFreeCompletionCombinator::class.simpleName} with single-thread executor",
+                        LockFreeCompletionCombinator(),
+                        singleThreadDelayExecutor
+                    ),
+                    Arguments.of(
+                        "Using ${LockFreeCompletionCombinator::class.simpleName} with multi-thread executor",
+                        LockFreeCompletionCombinator(),
+                        multiThreadDelayExecutor
+                    )
                 )
-            }.limit(repetions)
-            val lockFreeImp: Stream<Arguments> = Stream.generate {
-                Arguments.of(
-                    "Using LockFreeCompletionCombinator",
-                    LockFreeCompletionCombinator()
-                )
-            }.limit(repetions)
-            return Stream.concat(lockBasedImp, lockFreeImp)
+            }.stream()
         }
 
         @JvmStatic
-        fun <T> delayExecution(duration: Duration, supplier: () -> T): CompletableFuture<T> {
+        fun <T> delayExecution(
+            executor: ScheduledExecutorService,
+            duration: Duration = Duration.ofMillis(1000L),
+            supplier: () -> T
+        ): CompletableFuture<T> {
             val cf = CompletableFuture<T>()
-            delayExecutor.schedule(
+            executor.schedule(
                 {
                     runCatching {
                         cf.complete(supplier())

@@ -1,6 +1,6 @@
 package pt.isel.pc.problemsets.sync.lockbased
 
-import pt.isel.pc.problemsets.sync.combinator.CombinationError
+import pt.isel.pc.problemsets.sync.combinator.AggregationError
 import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
@@ -56,7 +56,7 @@ class LockBasedCompletionCombinator : CompletionCombinator {
         return futureToReturn
     }
 
-    @Throws(CombinationError::class, IllegalArgumentException::class)
+    @Throws(AggregationError::class, IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
         require(inputStages.isNotEmpty()) { "inputFutures must not be empty" }
         val futureToReturn = CompletableFuture<T>()
@@ -96,7 +96,7 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                     val catchedThrowables = maybeError
                     requireNotNull(catchedThrowables)
                     futureToReturn.completeExceptionally(
-                        CombinationError("All futures failed", catchedThrowables)
+                        AggregationError("All futures failed", catchedThrowables)
                     )
                 }
             }

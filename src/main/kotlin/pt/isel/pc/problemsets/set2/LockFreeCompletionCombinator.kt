@@ -1,6 +1,6 @@
 package pt.isel.pc.problemsets.set2
 
-import pt.isel.pc.problemsets.sync.combinator.CombinationError
+import pt.isel.pc.problemsets.sync.combinator.AggregationError
 import pt.isel.pc.problemsets.sync.combinator.CompletionCombinator
 import pt.isel.pc.problemsets.sync.lockfree.TreiberStack
 import java.util.concurrent.CompletableFuture
@@ -45,7 +45,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
         TODO()
     }
 
-    @Throws(CombinationError::class, IllegalArgumentException::class)
+    @Throws(AggregationError::class, IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
         TODO()
     }

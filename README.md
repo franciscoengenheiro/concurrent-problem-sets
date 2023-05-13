@@ -15,6 +15,7 @@
   - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
+  - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
 - [Lock-based vs Lock-free Implementations](#lock-based-vs-lock-free-implementations)
 
 ## Set1
@@ -491,9 +492,8 @@ There's no garantee which value will be consumed by a thread, nor each life.
 The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the 
 [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are 
 implemented by the `JVM`.
-Some examples can be seen [here](https://www.geeksforgeeks.org/happens-before-relationship-in-java/).
 
-An implementation that is not thread-safe, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
+An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
 #### Public interface
 ```kotlin
@@ -548,34 +548,70 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
 - A thread calls `tryStartUse`, and tries to start using the value, if it was not previously closed.
 - A thread calls `endUse`, and ends the use of the value, if it was not previously closed.
 
+#### Conditions of execution:
+- `tryStartUse`:
+    - **Paths** - The thread can take two major paths when calling this method:
+        - **fast-path**
+            - the `value` is already null, which means the resource was closed, and as such, null is returned (cannot be reused).
+        - **retry-path**
+            - the `value` is not closed, so this thread tries to increment the usage counter if possible, and if it is, returns the `value`.
+            - while trying to increment the usage counter, the threads sees that the counter is zero, indicates that the resource is closed, null is returned (cannot be reused).
+      
+- `endUse`:
+    - **Paths** - The thread can take two major paths when calling this method:
+        - **fast-path**
+            - the `value` is already null, since it was closed, and as such, `IllegalStateException` is thrown.
+        - **retry-path**
+            - the `value` is not closed, so this thread tries to decrement the usage counter if possible, and if it is, returns immediately.
+            - if the thread that decrements the usage counter is the last one, the thread closes the resource and sets the `value` to null.
+            - while trying to decrement the usage counter, the threads see that the counter is zero, indicating that some other thread closed the resource, this thread throws `IllegalStateException`.
+
+### LockFreeCompletionCombinator
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/LockFreeCompletionCombinator.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CompletionCombinatorTests.kt)
+
+#### Description
+A [CompletionCombinator](src/main/kotlin/pt/isel/pc/problemsets/sync/combinator/CompletionCombinator.kt)
+that minimizes the usage of locks to synchronize access to shared state.
+It uses the `Java Memory Model` guarantees to ensure that the shared state is updated atomically.
+
+An implementation that is *lock-based*,
+and that was the starting point of this implementation,
+and the motive for the creation of the already mentioned `CompletionCombinator` interface,
+is available [here](src/main/kotlin/pt/isel/pc/problemsets/sync/lockbased/LockBasedCompletionCombinator.kt).
+
+An example of a *lock-based* and a *lock-free* implementation can be consulted in this [section](#lock-based-vs-lock-free-implementations).
+
 ### Lock-based vs Lock-free implementations
 
 ```kotlin
 object LockBasedImplementation {
     val lock: Lock = ReentrantLock()
-    var sharedVariable: Int = 0 // or any other type
-    fun update() = lock.withLock {
-        logic(sharedVariable)
+    var sharedState: Any = Any()
+    fun updateState() = lock.withLock {
+        logic(sharedState)
     }
 }
 ```
 
 ```kotlin
 object LockFreeImplementation {
-    // or any other variable modifier, class or annotation that ensures the
-    // writing to this reference happens-before the read
-    val sharedVariable: AtomicInteger = AtomicInteger(0)
-    fun update() {
+    // or any other variable modifier, class, annotation or final variable that ensures the
+    // writing to this reference *happens-before* the read
+    val sharedState: AtomicReference = AtomicReference(0)
+    fun updateState() {
         while (true) {
-            val observedValue = sharedVariable.get()
-            val nextValue = if (condition) {
-                logic(observedValue)
+            val observedState = sharedState.get()
+            val nextState = if (condition) {
+                logic(observedState)
             } else {
                 failureLogic()
             }
-            if (sharedVariable.compareAndSet(observedValue, nextValue)) {
+            // applies the next state to the shared state if the observed 
+            // value corresponds to the value present in the shared state
+            if (sharedState.compareAndSet(observedState, nextState)) {
                 successLogic()
-                return // or any other exit condition of the retry loop
+                return // or any other exit condition of the retry loop when done
             }
             // retry
         }
