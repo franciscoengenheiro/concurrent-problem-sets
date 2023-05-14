@@ -47,11 +47,13 @@ class TreiberStack<T> : Stack<T> {
     fun toList(): List<T> {
         // fast-path -> if the stack is empty, return an empty list
         head.get() ?: return emptyList()
-        // retry-path -> if the stack is not empty, try to return a list with its elements
+        // retry-path -> if the stack is not empty, try to return a snapshot of the stack
+        // or retry if the head changed
         while (true) {
             val observedHead = head.get() ?: return emptyList()
             val newList = mutableListOf(observedHead.value)
             var current = observedHead.next
+            // iterate over the stack
             while (current != null) {
                 newList.add(current.value)
                 current = current.next

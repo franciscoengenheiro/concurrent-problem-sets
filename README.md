@@ -16,7 +16,8 @@
   - [ThreadSafeContainer](#threadsafecontainer)
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
   - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
-- [Lock-based vs Lock-free Implementations](#lock-based-vs-lock-free-implementations)
+- [Monitor style vs Kernel style](#monitor-style-vs-kernel-style)
+- [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
 
 ## Set1
 ### NAryExchanger
@@ -112,7 +113,8 @@ In the following image, an example can be seen of the iteraction between the blo
 |                       *BlockingMessageQueue example*                        |
 
 #### Style of syncronization:
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, which one representing a different condition:
+- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, 
+which one representing a different condition:
   - `ProducerRequest` - represents a *Producer Thread* request to enqueue a message.
   
     ```kotlin
@@ -492,7 +494,7 @@ The following image shows a possible representation of the previous states in a 
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 - **Additional notes**:.
-    - If the last thread to enter the barrier throws a `throwable` when executing the `Runnable` task, the barrier is broken.
+    - If the last thread to enter the barrier throws a `throwable` when executing the runnable task, the barrier is broken.
      and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
 
 ### ThreadSafeContainer
@@ -502,13 +504,20 @@ The following image shows a possible representation of the previous states in a 
 #### Description
 A thread-safe container is a container that allows multiple threads to consume the values it 
 contains using the `consume` method.
+
 The container receives an array of [AtomicConsumableValue](src/main/kotlin/pt/isel/pc/problemsets/set2/AtomicConsumableValue.kt)s,
 that cannot be empty.
 Each value has a number of lives that represent the number of times that value can be consumed by a thread.
 
 A thread that consumes a value from the container
 decreases the number of lives of that value by one or returns `null` if the container has no values left to consume.
-There's no garantee which value will be consumed by a thread, nor each life.
+
+When multiple threads try to consume a value from the container at the same time,
+there's no guarantee which thread will consume the life of that value first.
+Also,
+a thread that tries to consume a value from a non-empty container could possibly never consume a value
+if it keeps losing the race against other threads
+that are also trying to the same, which could mean that the container might be emptied by other threads before it can consume a value.
 
 #### Public interface
 ```kotlin
@@ -519,7 +528,8 @@ class ThreadSafeContainer<T>(
 }
 ```
 
-The following images illustrate the state of the container before and after a set of threads consume values from it.
+The following images illustrate the state of the container before and after a set of threads consume values from it,
+as well as how a value is represented.
 
 | ![Thread-Safe Container before consumption](src/main/resources/set2/thread-safe-container-before-consumption.png) |
 |:-----------------------------------------------------------------------------------------------------------------:|
@@ -527,9 +537,8 @@ The following images illustrate the state of the container before and after a se
 |                                          *Thread-Safe Container example*                                          |
 
 #### Style of synchronization
-The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the
-[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are
-implemented by the `JVM`.
+The implementation uses a lock-free *retry* style of synchronization,
+where a thread that fails to consume a value from the container will retry until possible.
 
 An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
@@ -579,9 +588,8 @@ the value is closed because the counter reached zero.
 |                                         *Thread-Safe Counted Holder example*                                          |
 
 #### Style of synchronization
-The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the
-[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are
-implemented by the `JVM`.
+The implementation uses a lock-free *retry* style of synchronization,
+where a thread that fails to increment/decrement the usage counter of the value will retry until possible.
 
 An implementation that is not thread-safe, and that was the starting point of this implementation,
 can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
@@ -614,15 +622,7 @@ can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCoun
 
 #### Description
 A [CompletionCombinator](src/main/kotlin/pt/isel/pc/problemsets/sync/combinator/CompletionCombinator.kt)
-that minimizes the usage of locks to synchronize access to shared state.
-It uses the `Java Memory Model` guarantees to ensure that the shared state is updated atomically.
-
-An implementation that is *lock-based*,
-and that was the starting point of this implementation,
-and the motive for the creation of the already mentioned `CompletionCombinator` interface,
-is available [here](src/main/kotlin/pt/isel/pc/problemsets/sync/lockbased/LockBasedCompletionCombinator.kt).
-
-An example of a *lock-based* and a *lock-free* implementation can be consulted in this [section](#lock-based-vs-lock-free-implementations).
+that minimizes the usage of locks to synchronize access to shared state. It provides similar functionalities as the [Promise.all](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all) and [Promise.any](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any) combinators of the [JavaScript Promise API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise).
 
 #### Public interface
 ```kotlin
@@ -636,25 +636,178 @@ class LockFreeCompletionCombinator : CompletionCombinator {
 }
 ```
 
-The following image illustrates the combinator's respective possible output when a list of `CompletableFutures` is provided.
+The following image illustrates the combinators respective possible output when a list of `CompletableFutures` is provided.
 
 | ![Lock-free Completion Combinator](src/main/resources/set2/lock-free-completion-combinator.png) |
 |:-----------------------------------------------------------------------------------------------:|
 |                            *Lock-free Completion Combinator example*                            |
 
 #### Style of synchronization
-TODO()
+The implementation uses a lock-free *retry* style of synchronization,
+where a thread that sees a change of state will try to update the state of the combinator until it can
+or sees another thread updating the state.
+
+The combinators implementation uses the [TreiberStack](src/main/kotlin/pt/isel/pc/problemsets/sync/lockfree/TreiberStack.kt) data structure,
+learned in lectures, which is a lock-free stack.
+A `toList` method was added to this stack to return a list of the elements in it. The method was also designed to be lock-free,
+although it will always provide a *snapshot* of the stack at the time of the call
+and cannot guarantee the current state of the stack.
+
+An implementation that is *lock-based*,
+and that was the starting point of this implementation,
+and the motive for the creation of the already mentioned `CompletionCombinator` interface,
+is available [here](src/main/kotlin/pt/isel/pc/problemsets/sync/lockbased/LockBasedCompletionCombinator.kt).
+
+An example of a *lock-based* and a *lock-free* implementations can be consulted in this [section](#lock-based-vs-lock-free-algorithms).
 
 #### AggregationError
-TODO()
+The [AggregationError](src/main/kotlin/pt/isel/pc/problemsets/sync/combinator/AggregationError.kt) is a custom exception
+that is thrown when the `any` combinator is called and **all** of the input stages fail,
+similar to the [AggregateError](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AggregateError) in JavaScript.
+
+It contains a list of the exceptions that caused the failure of the input stages as a property.
+
+```kotlin
+class AggregationError(
+    message: String,
+    causes: List<Throwable>
+) : Error(message) {
+    val throwables: List<Throwable> by lazy(LazyThreadSafetyMode.PUBLICATION) { causes }
+}
+```
+
+It was deemed necessary to provide a property
+that returns a list of exceptions that caused the failure of each input stage.
+To achieve this,
+the property was implemented as a [lazy](https://kotlinlang.org/docs/delegated-properties.html#lazy-properties) property,
+meaning the list is only created if and when the property is called.
+
+Additionally, `LazyThreadSafetyMode.PUBLICATION` was used to ensure that the list is created only once,
+even if multiple initializations occur concurrently."
 
 #### Normal Execution
-TODO()
+- A thread calls the `all` method and passes a list of `CompletionStage` implementations, expecting a list of input stages as a result.
+- A thread calls the `any` method and passes a list of `CompletionStage` implementations, expecting a single input stage as a result.
 
 #### Conditions of execution
-TODO()
+`all`: 
+- For all input stages in this combinator, a handler was added to each stage, that executes when the stage
+completes, and in that handler a few paths can be associated:
+    - **fast-path**
+        - the entire list of input stages was already added to the `futureToReturn` that is returned by
+      this combinator, so this thread returns immediately.
+    - **retry-path-on-failure**
+        - the `futureToReturn` is not yet complete, and this thread sees the stage completed
+      exceptionally, and as such it tries to mark the `futureToReturn` as *completed*, but enters a retry
+      cycle since another thread might have already done that in the meantime. If the thread is successful
+      in marking the `futureToReturn` as *completed*, it will complete it exceptionally with the exception
+      that caused the failure of the input stage and return.
+    - **retry-path-on-success**
+        - the `futureToReturn` is not yet complete, and this thread sees that all stages completed
+      succesfully, and as such it tries to mark the `futureToReturn` as *completed*, 
+      but enters a retry cycle since another thread might have done that in the meantime. 
+      If the thread is successful in marking the `futureToReturn` as *completed*, it will complete
+      it successfully with the list of results and return. 
 
-### Lock-based vs Lock-free implementations
+`any`:
+- For all input stages in this combinator, a handler was added to each stage, that executes when the 
+stage completes, and in that handler a few paths can be associated:
+    - **fast-path**
+        - the `futureToReturn` that is returned by this combinator was already completed, so this thread
+      returns immediately.
+    - **retry-path-on-success**
+        - the `futureToReturn` is not yet complete, and this thread sees that the stage associated with
+      the handler completed succesfully, and as such it tries to mark the `futureToReturn` a*completed*,
+      but enters a retry cycle since another thread might have done that in the meantime.
+      If the thread is successful in marking the `futureToReturn` as *completed*,
+      it will complete it successfully with the result of the input stage and return.
+    - **retry-path-on-failure**
+        - the `futureToReturn` is not yet complete, and this thread sees that all stages completed
+      exceptionally, and as such it tries to mark the `futureToReturn` as *completed*, but enters a 
+      retry cycle since another thread might have already done that in the meantime. If the thread
+      is successful in marking the `futureToReturn` as *completed*, it will complete it exceptionally
+      with an `AggregationError` containing a list of the exceptions that caused the failure of each 
+      input stage and return.
+
+### Monitor style vs Kernel style
+In the monitor-style of synchronization, the thread that creates favorable conditions for other threads to advance
+to the next state signals those threads.
+It is the responsibility of those other threads to complete their own request of sorts after they exit the condition
+where they were waiting.
+
+In the kernel-style or delegation of execution,
+the thread that creates favorable conditions for other threads to advance to the next state is responsible
+for completing the requests of those other threads.
+In successful cases,
+the threads in the dormant state that were signaled do not have
+to do anything besides confirming that their request was completed and return immediately from the synchronizer.
+This style of synchronization is usually associated with one or more requests
+that a thread or threads want to see completed,
+and they delegate that completion to another thread, while keeping a local reference to that request, which then enables
+the syncronizer to resume its functions without waiting for said requests to be completed. 
+
+For general purpose, the kernel-style is the preferred one, 
+since it is more flexible and easier to implement, but the choice will always be dependent
+on the context of the syncronazation problem.
+
+### Lock-based vs Lock-free algorithms
+The lock-based algorithms use a `lock` to ensure that only one thread can access the shared state at a given time.
+
+#### Intrinsic vs Explicit locks
+- synchronized blocks (*intrinsic lock*)
+    ```kotlin
+    synchronized(lock) {
+       // code to be synchronized
+    }
+    ```
+- syncronized methods (*intrinsic lock*)
+    ```kotlin
+    @Synchronized 
+    fun method() {
+        // code to be synchronized
+    }
+    ```
+- ReetrantLock (*explicit lock*)
+    ```kotlin
+    // Or any other Lock interface implementation
+    val lock: Lock = ReentrantLock()
+    fun method() = lock.withLock {
+        // code to be synchronized
+    }
+    ```
+Meanwhile, the lock-free algorithms are based on atomic operations that ensure that multiple threads can access shared state concurrently without interfering with each other. 
+This allows for efficient concurrent access without the overhead and potential contention of locking mechanisms.
+Most algorithms use atomic variables to ensure that the shared state is accessed atomically.
+
+#### Volatile vs Atomic
+When a variable is marked as `volatile`, any *write* to that variable is immediately visible to all other threads,
+and any *read* of that variable is guaranteed to see the most recent write
+(*[happens-before relation](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)*).
+This is guaranteed by the [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html), which is 
+then implemented by the `Java Virtual Machine`.
+
+```kotlin
+@Volatile var sharedState: Any = Any()
+```
+
+[Atomic](https://docs.oracle.com/javase/8/docs/api/index.html?java/util/concurrent/atomic/package-summary.html) variables 
+are implicitly *volatile* and guarantee atomicity of operations on them.
+
+Some examples of atomic variables are `AtomicInteger`, `AtomicBoolean` and `AtomicReference`.
+These variables have special methods for atomic operations, like `compare-and-set` which guarantee that their state will always
+be consistent and synchronized between threads.
+
+```kotlin
+val sharedState: AtomicReference<Any> = AtomicReference(Any())
+```
+
+| ![Volatile-vs-Atomic](src/main/resources/set2/volatile-vs-atomic.png) |
+|:---------------------------------------------------------------------:|
+|                         *Volatile vs Atomic*                          | 
+
+#### Implementations
+An example of a lock-based and a lock-free implementation of a business logic
+that updates a shared state can be seen in the following code snippets:
 
 ```kotlin
 object LockBasedImplementation {
@@ -668,8 +821,6 @@ object LockBasedImplementation {
 
 ```kotlin
 object LockFreeImplementation {
-    // or any other variable modifier, class, annotation or final variable that ensures the
-    // writing to this reference *happens-before* the read
     val sharedState: AtomicReference<Any> = AtomicReference(Any())
     fun updateState() {
         while (true) {

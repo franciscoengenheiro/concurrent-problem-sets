@@ -27,7 +27,6 @@ class LockFreeCompletionCombinator : CompletionCombinator {
                 if (initialObservedStatus) {
                     return@handle
                 }
-                // retry-path -> if the future was not completed, try to complete it
                 if (success != null) {
                     successStack.push(success)
                 } else {
