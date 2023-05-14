@@ -30,9 +30,9 @@ class ThreadSafeContainer<T>(private val values: Array<AtomicValue<T>>) {
             val observedIndex = index.get()
             // if there are more values to be consumed
             if (observedIndex in values.indices) {
+                val atomicValue = values[observedIndex]
                 while (true) {
                     // retry-path -> A thread tries to decrement a life from a value or retries if not possible
-                    val atomicValue = values[observedIndex]
                     val observedLives = atomicValue.lives.get()
                     val nextLives = if (observedLives > 0) observedLives - 1 else break
                     if (atomicValue.lives.compareAndSet(observedLives, nextLives)) {

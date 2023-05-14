@@ -44,12 +44,11 @@ class TreiberStack<T> : Stack<T> {
         }
     }
 
-    // TODO("or implement Iterable interface?")
     fun toList(): List<T> {
         // fast-path -> if the stack is empty, return an empty list
         head.get() ?: return emptyList()
         // retry-path -> if the stack is not empty, try to return a list with its elements
-        do {
+        while (true) {
             val observedHead = head.get() ?: return emptyList()
             val newList = mutableListOf(observedHead.value)
             var current = observedHead.next
@@ -59,13 +58,10 @@ class TreiberStack<T> : Stack<T> {
             }
             // only return the list if the head did not change
             if (head.compareAndSet(observedHead, observedHead)) {
-                // TODO("nothing garantees that even if the head did not change, the list returned
-                //  is the list when the head was observed? Or when the head update with a new value
-                //  is never the same?")
                 return newList
             }
             // else, retry
-        } while(true)
+        }
     }
 
 }

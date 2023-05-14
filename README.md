@@ -396,12 +396,18 @@ If provided, a `Runnable` task is executed once the last thread in the set arriv
 
 The barrier is called *cyclic* because it can be re-used again after being broken for the next barrier generation.
 
-Assuming a barrier is not opened, it can be *broken* for the following reasons:
+Assuming a barrier is not opened yet, it can be *broken* for the following reasons:
 - A thread waiting at the barrier is interrupted.
 - A thread waiting at the barrier times out while waiting.
 - The barrier was resetted, and there was at least one thead waiting at the barrier.
 - If the execution of the runnable by the last thread, throws an exception.  
 - When a thread sets a timeout of zero and enters a non-broken barrier but does not complete it.
+
+A new generation of the barrier is created *only* when:
+- the last thread that enters the barrier and:
+    - the runnable task executes successfully.
+    - no runnable task was provided.
+- the barrier is resetted.
 
 #### Public interface
 ```kotlin
@@ -421,33 +427,47 @@ class CyclicBarrier(
 }
 ```
 
+The barrier has the following possible states for each barrier generation.
+
+| ![Cyclic Barrier states](src/main/resources/set2/cyclic-barrier-states.png) |
+|:---------------------------------------------------------------------------:|
+|                 *Cyclic Barrier possible generation states*                 |
+
 #### Style of synchronization
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
+For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
   because it's easier
   for the last thread to enter the barrier
-  to signal all threads that are waiting for the barrier to be opened and thus completing their request,
-  which then enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
-- As mentioned, the `CyclicBarrier` is a reusable barrier, and as such, it is necessary to create another instance of the `Request` for the next barrier generation, and that is done by the last thread to enter the barrier. This thread is also responsible to execute the `Runnable` task if it exists. If the execution of the `Runnable` task throws a `throwable`, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`.
-- Because the threads are always signaled to leave the condition by either resetting the barrier or by opening it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
-- When a barrier is resetted, it is only broken if there are any threads waiting at the barrier. However, a new barrier generation is always created because a thread with a timeout of *zero* can break the barrier without increasing the counter - number of threads waiting — making it unusable.
-- The described `Request` is defined as follows:
+  to signal all threads that are waiting for the barrier to be opened and thus completing their request.
 
-    ```kotlin
-    private class BarrierRequest(
-        var nOfThreadsWaiting: Int = 0,
-        var wasBroken: Boolean = false,
-        var wasOpened: Boolean = false
-    )
-    ```
+This implementation enables the barrier to be reused for the next barrier generation without affecting the prior barrier reference that the other threads have acquired before laying down their request.
 
-The barrier has the following possible states for each barrier generation:
+As mentioned, the `CyclicBarrier` is a reusable barrier,
+and as such, it is necessary to create another instance of the `Request` for the next barrier generation,
+and that is done by the last thread to enter the barrier.
+This thread is also responsible to execute the runnable task if it exists.
+If the execution of the runnable task throws a `throwable`,
+the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`.
 
-| ![Barrier States](src/main/resources/set2/cyclic-barrier-states.png) |
-|:--------------------------------------------------------------------:|
-|             *Cyclic Barrier possible generation states*              |
+Because the threads are always signaled to leave the condition by either resetting the barrier or by opening it, the condition where all threads are waiting for the barrier to be broken is also reused in subsequent barrier generations.
+
+The described `Request` is defined as follows:
+
+```kotlin
+private class BarrierRequest(
+    var nOfThreadsWaiting: Int = 0,
+    var wasBroken: Boolean = false,
+    var wasOpened: Boolean = false
+)
+```
+
+The following image shows a possible representation of the previous states in a barrier with 3 parties. 
+
+| ![Cyclic Barrier](src/main/resources/set2/cyclic-barrier.png) |
+|:-------------------------------------------------------------:|
+|                   *Cyclic Barrier example*                    |
 
 #### Normal execution:
-- A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it to be opened and the `Runnable` task to be executed if it exists. Returns the arrival index of this thread where:
+- A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it to be opened and the runnable task to be executed if it exists. Returns the arrival index of this thread where:
     - `getParties() - 1` - for first thread to enter the barrier.
     - `0` - for last thread to enter the barrier.
 - A thread calls `await` (with *timeout*), and awaits for a specified timeout for the other threads to reach the barrier, with the same behavior as the previous method.
@@ -461,7 +481,9 @@ The barrier has the following possible states for each barrier generation:
 - **Paths** - The thread can take three major paths when calling this method:
     - **fast-path** 
         - the current barrier has already been broken, and as such, the thread throws a `BrokenBarrierException`.
-        - the barrier has not yet been broken, and this thread is the last one to enter the barrier, and as such, the thread completes the barrier, executes the `Runnable` task if it exists, signals all the other threads waiting for the barrier to be broken and creates a new `Request` for the next barrier generation.
+        - the barrier has not yet been broken, and this thread is the last one to enter the barrier:
+            - if a runnable task was provided and its execution throws a `throwable`, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`, and the thread returns the same `throwable`.
+            - if a runnable task was not provided, or its execution completes successfully, the barrier is opened, a new generation is created, and the thread returns `0`.
         - A thread that specifies a timeout of *zero* and does not complete the barrier will not wait for that event and throws a `TimeoutException` immediately.
     - **wait-path**
         - the barrier has not yet been broken, and this thread is not the last one to enter the barrier, and as such, the thread passively awaits for that condition to be met. 
@@ -482,18 +504,11 @@ A thread-safe container is a container that allows multiple threads to consume t
 contains using the `consume` method.
 The container receives an array of [AtomicValue](src/main/kotlin/pt/isel/pc/problemsets/set2/AtomicValue.kt)s,
 that cannot be empty.
-Each value has a number of lives, that represents the number of times that value can be consumed by a thread.
+Each value has a number of lives that represent the number of times that value can be consumed by a thread.
 
 A thread that consumes a value from the container
 decreases the number of lives of that value by one or returns `null` if the container has no values left to consume.
 There's no garantee which value will be consumed by a thread, nor each life.
-
-#### Style of synchronization
-The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the 
-[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are 
-implemented by the `JVM`.
-
-An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
 #### Public interface
 ```kotlin
@@ -504,23 +519,36 @@ class ThreadSafeContainer<T>(
 }
 ```
 
-The following image illustrates the state of the container before and after a set of threads consume values from it.
+The following images illustrate the state of the container before and after a set of threads consume values from it.
 
-| ![Thread Safe Container before consumption](src/main/resources/set2/thread-safe-container-before-consumption.png) |
+| ![Thread-Safe Container before consumption](src/main/resources/set2/thread-safe-container-before-consumption.png) |
 |:-----------------------------------------------------------------------------------------------------------------:|
-|  ![Thread Safe Container after consumption](src/main/resources/set2/thread-safe-container-after-consumption.png)  |
-|                                          *Thread Safe Container example*                                          |
+|  ![Thread-Safe Container after consumption](src/main/resources/set2/thread-safe-container-after-consumption.png)  |
+|                                          *Thread-Safe Container example*                                          |
+
+#### Style of synchronization
+The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the
+[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are
+implemented by the `JVM`.
+
+An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
 #### Normal execution:
-- A thread calls `consume`, and consumes a value from the container, if there is any left or returns `null` if the container is empty.
+- A thread calls `consume`, and consumes a value from the container, if there is any left or returns `null` if 
+the container is empty.
 
 #### Conditions of execution:
-- `consume`:
-    - **Paths** - The thread can take two major paths when calling this method:
-        - **fast-path**
-            - the container has no values left to consume, and as such, null is returned.
-        - **outer-retry-path**
-            - the container has values left to consume, so the thread tries to decrement a life from the current index value, until possible. This action is associated with an **inner-retry-path**, because the thread will keep trying to decrement the life of the current value until it is not possible, because some other thread(s) decremented all lives of this value and as such, this thread is forced to leave to the **outer-retry-path**. Back to the outer loop, the thread tries to decrement a life of the next value in the array if it exists, or returns null if the array was emptied in the meantime.
+`consume`:
+- **Paths** - The thread can take two major paths when calling this method:
+    - **fast-path**
+        - the container has no values left to consume, and as such, null is returned.
+    - **outer-retry-path**
+        - the container has values left to consume, so the thread tries to decrement a life from the current index 
+          value until possible. This action is associated with an **inner-retry-path**, because the thread will keep trying 
+          to decrement the life of the current value until it is not possible, because some other thread(s) decremented all 
+          lives of this value and as such, this thread is forced to leave to the **outer-retry-path**. Back to the outer loop,
+          the thread tries to decrement a life of the next value in the array if it exists, or returns null if the array was 
+          emptied in the meantime.
 
 ### ThreadSafeCountedHolder
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeCountedHolder.kt) |
@@ -532,9 +560,6 @@ that holds a `value` that internally has a `counter` that specifies how many tim
 If the counter reaches zero, the value is automatically *closed*, since it implements the 
 [Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface.
 
-An implementation that is not thread-safe, and that was the starting point of this implementation,
-can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
-
 #### Public interface
 ```kotlin
 class ThreadSafeCountedHolder<T : Closeable>(value: T) {
@@ -544,27 +569,44 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
 }
 ```
 
+The following images illustrate the state of the holder when a thread tries to use the value,
+and after a thread decrements the usage counter of the value and
+the value is closed because the counter reached zero.
+
+|         ![Thread-Safe Counted Holder Try Use](src/main/resources/set2/thread-safe-counted-holder-try-use.png)         |
+|:---------------------------------------------------------------------------------------------------------------------:|
+| ![Thread-Safe Counted Holder End Usage And Close](src/main/resources/set2/thread-safe-counted-holder-after-close.png) |
+|                                         *Thread-Safe Counted Holder example*                                          |
+
+#### Style of synchronization
+The implementation of this syncronizer does not use explicit or implicit `locks` and relys only on the
+[Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html) guarantees that are
+implemented by the `JVM`.
+
+An implementation that is not thread-safe, and that was the starting point of this implementation,
+can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
+
 #### Normal execution:
-- A thread calls `tryStartUse`, and tries to start using the value, if it was not previously closed.
-- A thread calls `endUse`, and ends the use of the value, if it was not previously closed.
+- A thread calls `tryStartUse`, and retrieves the value if it is not closed, incrementing the usage counter.
+- A thread calls `endUse`, and decrements the usage counter of the value, closing it if the counter reaches zero.
 
 #### Conditions of execution:
-- `tryStartUse`:
-    - **Paths** - The thread can take two major paths when calling this method:
-        - **fast-path**
-            - the `value` is already null, which means the resource was closed, and as such, null is returned (cannot be reused).
-        - **retry-path**
-            - the `value` is not closed, so this thread tries to increment the usage counter if possible, and if it is, returns the `value`.
-            - while trying to increment the usage counter, the threads sees that the counter is zero, indicates that the resource is closed, null is returned (cannot be reused).
+`tryStartUse`:
+- **Paths** - The thread can take two major paths when calling this method:
+    - **fast-path**
+        - the `value` is already null, which means the resource was closed, and as such, null is returned (cannot be reused).
+    - **retry-path**
+        - the `value` is not closed, so this thread tries to increment the usage counter if possible, and if it is, returns the `value`.
+        - while trying to increment the usage counter, the threads sees that the counter is zero, indicates that the resource is closed, null is returned (cannot be reused).
       
-- `endUse`:
-    - **Paths** - The thread can take two major paths when calling this method:
-        - **fast-path**
-            - the `value` is already null, since it was closed, and as such, `IllegalStateException` is thrown.
-        - **retry-path**
-            - the `value` is not closed, so this thread tries to decrement the usage counter if possible, and if it is, returns immediately.
-            - if the thread that decrements the usage counter is the last one, the thread closes the resource and sets the `value` to null.
-            - while trying to decrement the usage counter, the threads see that the counter is zero, indicating that some other thread closed the resource, this thread throws `IllegalStateException`.
+`endUse`:
+- **Paths** - The thread can take two major paths when calling this method:
+    - **fast-path**
+        - the `value` is already null, since it was closed, and as such, `IllegalStateException` is thrown.
+    - **retry-path**
+        - the `value` is not closed, so this thread tries to decrement the usage counter if possible, and if it is, returns immediately.
+        - while trying to decrement the usage counter, the threads see that the counter is zero, indicating that some other thread closed the resource, this thread throws `IllegalStateException`.
+        - if the thread that decrements the usage counter sees the counter reaching zero, the thread closes the resource and sets the `value` to null.
 
 ### LockFreeCompletionCombinator
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/LockFreeCompletionCombinator.kt) |
@@ -582,6 +624,36 @@ is available [here](src/main/kotlin/pt/isel/pc/problemsets/sync/lockbased/LockBa
 
 An example of a *lock-based* and a *lock-free* implementation can be consulted in this [section](#lock-based-vs-lock-free-implementations).
 
+#### Public interface
+```kotlin
+class LockFreeCompletionCombinator : CompletionCombinator {
+
+    @Throws(IllegalArgumentException::class)
+    override fun <T> all(inputStages: List<CompletionStage<T>>): CompletionStage<List<T>>
+
+    @Throws(AggregationError::class, IllegalArgumentException::class)
+    override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T>
+}
+```
+
+The following image illustrates the combinator's respective possible output when a list of `CompletableFutures` is provided.
+
+| ![Lock-free Completion Combinator](src/main/resources/set2/lock-free-completion-combinator.png) |
+|:-----------------------------------------------------------------------------------------------:|
+|                            *Lock-free Completion Combinator example*                            |
+
+#### Style of synchronization
+TODO()
+
+#### AggregationError
+TODO()
+
+#### Normal Execution
+TODO()
+
+#### Conditions of execution
+TODO()
+
 ### Lock-based vs Lock-free implementations
 
 ```kotlin
@@ -598,7 +670,7 @@ object LockBasedImplementation {
 object LockFreeImplementation {
     // or any other variable modifier, class, annotation or final variable that ensures the
     // writing to this reference *happens-before* the read
-    val sharedState: AtomicReference = AtomicReference(0)
+    val sharedState: AtomicReference<Any> = AtomicReference(Any())
     fun updateState() {
         while (true) {
             val observedState = sharedState.get()

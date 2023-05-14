@@ -17,7 +17,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
     override fun <T> all(inputStages: List<CompletionStage<T>>): CompletionStage<List<T>> {
         require(inputStages.isNotEmpty()) { "inputStages must not be empty" }
         val futureToReturn = CompletableFuture<List<T>>()
-        // cannot use a non-thread safe container since it will be shared between multiple threads
+        // cannot use a non-thread-safe container since it will be shared between multiple threads
         val successStack: TreiberStack<T> = TreiberStack()
         val wasCompleted = AtomicBoolean(false)
         inputStages.forEach {
@@ -68,7 +68,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
         require(inputStages.isNotEmpty()) { "inputStages must not be empty" }
         val futureToReturn = CompletableFuture<T>()
-        // cannot use a non-thread safe container since it will be shared between multiple threads
+        // cannot use a non-thread-safe container since it will be shared between multiple threads
         val failureStack: TreiberStack<Throwable> = TreiberStack()
         val wasCompleted = AtomicBoolean(false)
         inputStages.forEach {

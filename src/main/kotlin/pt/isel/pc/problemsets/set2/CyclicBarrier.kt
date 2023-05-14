@@ -65,7 +65,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
             val indexOfArrival = parties - (barrierRequest.nOfThreadsWaiting + 1)
             // fast-path(2) - the thread that enters is the last thread to arrive at an unbroken barrier
             if (indexOfArrival == 0) {
-                executeBarrierAction()
+                executeBarrierActionAndUpdate()
                 barrierCondition.signalAll()
                 barrierRequest = BarrierRequest()
                 return 0
@@ -155,7 +155,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * This method should only be called inside a thread-safe environment, since it checks and
      * alters the internal state of the barrier.
      */
-    private fun executeBarrierAction() {
+    private fun executeBarrierActionAndUpdate() {
         val barrierActionRef = barrierAction
         if (barrierActionRef == null) {
             barrierRequest.wasOpened = true

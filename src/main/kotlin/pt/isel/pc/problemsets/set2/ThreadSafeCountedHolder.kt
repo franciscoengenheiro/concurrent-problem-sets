@@ -14,7 +14,7 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
     private var value: T? = value
 
     // the instance creation counts as one usage
-    private var useCounter: AtomicInteger = AtomicInteger(1)
+    private val useCounter: AtomicInteger = AtomicInteger(1)
 
     /**
      * Tries to use the value. If the value is used, the internal counter is incremented.
