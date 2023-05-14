@@ -47,12 +47,12 @@ In the following image, an example can be seen of such iteraction between the ex
 |:------------------------------------------------------------:|
 |                   *NAryExchanger example*                    |
 
-#### Style of syncronization: 
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
+#### Style of synchronization: 
+- For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
 represents a group in this context.
 - A delegation of execution was used, because it's easier for the thread that completes the group to signal all the other threads of that group, that such condition is now true, thus completing their request, and as such, the other threads in the group aren't 
 required to alter the state of the `Exchanger` or their own state when they return from *await* (as they would in `Monitor Style`).
-- Also, the `Kernel-style` allows for the exchanger to keep creating new groups without worrying about the state of the previous ones, as the threads of each group keep a reference to their respective request object.
+- Also, the `Kernel-style` allows for the exchanger to keep creating new groups without keeping track of the previous ones, as the threads of each group keep a local reference to their respective request object.
 - The described `Request` is defined as follows:
 
     ```kotlin
@@ -75,14 +75,14 @@ required to alter the state of the `Exchanger` or their own state when they retu
     - the thread is interrupted while waiting for the group to be completed and throws an `InterruptedException`.
     - the thread willing-to-wait timeout expires and returns `null`.
 - **Additional notes**:
-    - If a thread is interrupted but the group is completed, it will still return the exchanged values but will throw an `InterruptedException` if blocked again. 
+    - If a thread is interrupted but the group is completed, it will still return the exchanged values but will throw an `InterruptedException` if blocked again (since the interrupt flag is rearmed). 
     - A thread that specifies a timeout of *zero* will not wait for the group to be completed and will return `null` immediately if it did not complete the group.
   
 ### BlockingMessageQueue
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueue.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueueTests.kt)
 
 #### Description
-This syncronizer is a blocking queue,
+This synchronizer is a blocking queue,
 similar to an [ArrayBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ArrayBlockingQueue.html)
 that allows for multiple threads to concurrently enqueue and dequeue messages.
 It also allows for each thread to specify a willing-to-wait timeout for the enqueue and dequeue operations to complete.
@@ -92,7 +92,7 @@ and as such, if a thread tries to enqueue a message when the queue is full,
 or tries to dequeue a message when the queue is empty,
 it will block until the queue is not full or not empty, respectively.
 
-This type of syncronizer is useful when dealing in scenarios with multiple producers and consumer threads that want to exhange messages,
+This type of synchronizer is useful when dealing in scenarios with multiple producers and consumer threads that want to exhange messages,
 and as such, it is important to ensure that those messages are enqueued and dequeued in the order of arrival,
 because of that the queue was implemented using FIFO (*First In First Out*) ordering.
 
@@ -112,8 +112,8 @@ In the following image, an example can be seen of the iteraction between the blo
 |:---------------------------------------------------------------------------:|
 |                       *BlockingMessageQueue example*                        |
 
-#### Style of syncronization:
-- For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, 
+#### Style of synchronization:
+- For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, 
 which one representing a different condition:
   - `ProducerRequest` - represents a *Producer Thread* request to enqueue a message.
   
@@ -136,8 +136,11 @@ which one representing a different condition:
     ```
 - The delegation is used in the sense where the *Consumer thread* that dequeues the messages is the one that signals all *Producer
 threads*, that were waiting to enqueue a message, and completes their request if it can be completed, because it altered the 
-state of the syncronizer and because of that it might have created conditions that allow other threads to complete their requests. 
+state of the synchronizer and because of that it might have created conditions that allow other threads to complete their requests. 
 This process works in both ways, where a *Producer thread* should complete all *Consumer thread requests* if they can be completed.
+- Since each thread submits a request to its respective queue, *specific signalling* is used here where the threads can signal 
+each other instead of a single condition, which is more efficient because it reduces the number of threads that are woken up 
+when a condition is met only to find their request is not the one that was completed.
 - In this context, there's also a special case where if a *Consumer Thread* gives up, either by timeout or interruption, not
 only it should remove its request from the *consumer requests queue*,
   but also it should signal all *Consumer Threads*, that were waiting to dequeue a set of messages, and complete their request if it can be completed.
@@ -155,8 +158,8 @@ within the given timeout, the thread gives up.
 In the process of giving up, the thread removes its request from the *consumer requests queue*,
 and completes all *Consumer Thread* requests that can be completed, in this example, **Consumer Thread 2** only. 
 
-Since delegation style was used in this syncronizer,
-not doing what was described would result in an invalid state of the syncronizer,
+Since delegation style was used in this synchronizer,
+not doing what was described would result in an invalid state of the synchronizer,
 where a ***liveliness*** property is violated,
 since there are enough messages in the *message queue* to complete the request of **Consumer Thread 2**
 but the thread is not signaled and subsequently its request is not completed.
@@ -164,8 +167,10 @@ but the thread is not signaled and subsequently its request is not completed.
 We could think similarly about the *Producer Thread* requests, where if a *Producer Thread* gives up, either by timeout or interruption,
 not only it should remove its request from the *producer requests queue*, but also it should signal the next *Producer Threads* in the
 queue and complete their request if it could be completed.
-But in this case, it's different because the *Producer Thread* that gave-up cannot signal since the request that it 
-represents is the same as all other *Producer Thread* requests.
+But in this case,
+it's different
+because the *Producer Thread* that gave-up submitted a request that is equals to all other *Producer Thread* requests,
+and as such, it cannot assume that the next *Producer Thread* request in the queue can be completed.
 
 #### Normal execution:
 - A thread calls `tryEnqueue` and expects to enqueue a message within the given timeout. 
@@ -182,8 +187,8 @@ represents is the same as all other *Producer Thread* requests.
     - the thread is interrupted while waiting for the queue to be not full and throws an `InterruptedException`.
     - the thread willing-to-wait timeout expires and returns `false`.
 - **Additional notes**:
-    - If a thread is interrupted but another thread completed this thread request to enqueue a message, it will still return `true` but will throw an `InterruptedException` if blocked again.
-    - A thread that specifies a timeout of *zero* will not wait and will return `false` immediately if it did not enqueue the message.
+    - If a thread is interrupted but another thread completed this thread request to enqueue a message, it will still return `true` but will throw an `InterruptedException` if blocked again (since the interrupt flag is rearmed).
+      - A thread that specifies a timeout of *zero* will not wait and will return `false` immediately if it did not enqueue the message.
 
 `TryDequeue`:
 - **Paths** - The thread can take two major paths when calling this method:
@@ -193,20 +198,20 @@ represents is the same as all other *Producer Thread* requests.
     - the thread is interrupted while waiting for the queue to be not empty and throws an `InterruptedException`.
     - the thread willing-to-wait timeout expires and returns `null`.
 - **Additional notes**:
-    - If a thread is interrupted but another thread completed this thread request to dequeue a set of messages, it will still return those messages, but will throw an `InterruptedException` if blocked again.
-    - A thread that specifies a timeout of *zero* will not wait and will return `null` immediately if it did not dequeue the number of requested messages.
+    - If a thread is interrupted but another thread completed this thread request to dequeue a set of messages, it will still return those messages, but will throw an `InterruptedException` if blocked again (since the interrupt flag is rearmed).
+      - A thread that specifies a timeout of *zero* will not wait and will return `null` immediately if it did not dequeue the number of requested messages.
 
 ### ThreadPoolExecutor
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutor.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorTests.kt)
 
 #### Description
-This syncronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
+This synchronizer is similar to the Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
 that allows outside threads to delegate the execution of a task to other threads - *worker threads* - that it manages.
 
 The executor has a dynamic worker thread pool size from `0` to `maxThreadPoolSize`.
 The worker threads are created lazily,
 and as such,
-only when a task is delegated to the executor
+when a task is delegated to the executor
 and there are no available worker threads and the maximum pool size has not been reached, only then a new worker thread is created.
 
 The tasks are executed using the 
@@ -236,9 +241,9 @@ The following image shows how a task (**R**), that is delegated to a worker thre
 |                      *ThreadPoolExcecutor example*                       |
 
 #### Style of synchronization
-- In this syncronizer, the `Monitor Style` was used to synchronize the *worker threads*.
+- In this synchronizer, the `Monitor Style` was used to synchronize the *worker threads*.
   Each thread alters the state of the 
-syncronizer and doesn't delegate the alteration of that state to another thread.
+synchronizer and doesn't delegate the alteration of that state to another thread.
 
 #### Lifecycle
 The executor has a lifecycle that can be described by the following states:
@@ -249,7 +254,7 @@ The executor has a lifecycle that can be described by the following states:
  
 - **Ready** - the executor is accepting tasks to be executed. Outside threads can delegate tasks to the thread pool using the `execute` method.
 - **Shutting down** - the executor is in shutdown mode, and as such, is not accepting tasks to be executed, but it's still executing the tasks that were already delegated to it. This process is started by calling the `shutdown` method.
-- **Terminated** - the thread pool has finished the shutdown process and terminates. All tasks that were delegated to it prior to the shutdown process have been executed with success or failure. An outside thread can syncronize with this termination process by calling the `awaitTermination` method.
+- **Terminated** - the thread pool has finished the shutdown process and terminates. All tasks that were delegated to it prior to the shutdown process have been executed with success or failure. An outside thread can synchronize with this termination process by calling the `awaitTermination` method.
 
 #### Normal execution:
 - A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.
@@ -265,7 +270,7 @@ The executor has a lifecycle that can be described by the following states:
 `awaitTermination`:
 - **Paths** - The thread can take two major paths when calling this method:
     - the thread pool has already terminated, and as such, the thread returns `true` immediately (***fast-path***).
-    - the thread pool has not terminated, and as such, the thread passively awaits for the thread pool to terminate (***wait-path***).
+    - the thread pool hasn't terminated yet, and as such, the thread passively awaits for the thread pool to terminate (***wait-path***).
 - **Giving-up** - While waiting, a thread can *give-up* on the executor shutdown operation if:
     - the thread willing-to-wait timeout expires and returns `false`.
 - **Additional notes**:
@@ -273,12 +278,11 @@ The executor has a lifecycle that can be described by the following states:
     - a thread that specifies a timeout of *zero* will not wait for the executor to shut down and will return `false` immediately.
     - the last thread to terminate is also responsible to signal all the threads waiting for the executor to shut down.
 
-
 ### ThreadPoolExecutorWithFuture
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFuture.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFutureTests.kt)
 
 #### Description
-This syncronizer is similar to the [ThreadPoolExecutor](#threadpoolexecutor), but instead of 
+This synchronizer is similar to the [ThreadPoolExecutor](#threadpoolexecutor), but instead of 
 [Runnable](https://docs.oracle.com/javase/7/docs/api/java/lang/Runnable.html) tasks, 
 it accepts [Callable](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Callable.html) tasks
 that return a value or throw an exception.
@@ -306,8 +310,8 @@ A representative (**F**) of the task execution is returned to the outside thread
 |                            *ThreadPoolExcecutorWithFuture example*                             |
 
 #### Style of synchronization
-- In this syncronizer, the `Monitor Style` was used to synchronize the *worker threads*.
-Each thread alters the state of the syncronizer when necessary and doesn't delegate the alteration of that state to another thread.
+- In this synchronizer, the `Monitor Style` was used to synchronize the *worker threads*.
+Each thread alters the state of the synchronizer when necessary and doesn't delegate the alteration of that state to another thread.
 - Although it was used a `Request` to represent the task execution in the thread pool, that request completion
 is not being delegated to another thread. Once a worker thread has received a request, it is responsible to 
 complete it in any way possible.
@@ -324,9 +328,9 @@ private class ExecutionRequest<T>(
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/Promise.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/PromiseTests.kt)
 
 #### Description
-In order to allow the outside threads to get the result of the task execution,
+In order to allow the outside threads to synchronize the result of the task execution,
 the `execute` method of [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture) returns a 
-[Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) object.
+[Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) implementation.
 
 Instead of using already existing implementations,
 this executor uses its own implementation of the `Future` interface - a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise) -
@@ -362,7 +366,7 @@ The promise has a lifecycle that can be described by the following states:
 Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
 #### Style of synchronization
-- In this syncronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise is responsible to signal all threads that are waiting for that state to be altered for them to evaluate the state of the promise and act accordingly.
+- In this synchronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise is responsible to signal all threads that are waiting for that state to be altered for them to evaluate the state of the promise and act accordingly.
 
 #### Normal execution:
 - A thread calls `cancel`, expecting the task to be cancelled.
@@ -373,8 +377,8 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 #### Conditions of execution:
 `get`:
 - **Paths** - The thread can take two major paths when calling this method:
-    - **fast-path** - the task has already been completed, and as such, the thread receives the result of the task execution.
-    - **wait-path** - the task has not been completed, and as such, the thread passively awaits for that condition to be met.
+    - the task has already been completed, and as such, the thread receives the result of the task execution (**fast-path**).
+    - the task has not been completed, and as such, the thread passively awaits for that condition to be met (**wait-path**).
 - **Giving-up** - While waiting, a thread can *give-up* on the task execution if:
     - the thread willing-to-wait timeout expires and throws a `TimeoutException`.
     - the thread is interrupted while waiting and throws an `InterruptedException`.
@@ -392,7 +396,7 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrierTests.kt)
 
 #### Description
-A [CycleBarrier](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html) is a syncronization mechanism
+A [CycleBarrier](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html) is a synchronization mechanism
 that allows a set of threads to wait for each other to reach a common barrier point.
 If provided, a `Runnable` task is executed once the last thread in the set arrives at the barrier.
 
@@ -436,7 +440,7 @@ The barrier has the following possible states for each barrier generation.
 |                 *Cyclic Barrier possible generation states*                 |
 
 #### Style of synchronization
-For this syncronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
+For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier generation,
   because it's easier
   for the last thread to enter the barrier
   to signal all threads that are waiting for the barrier to be opened and thus completing their request.
@@ -493,9 +497,6 @@ The following image shows a possible representation of the previous states in a 
     - the thread is interrupted and, as such, throws an `InterruptedException`, ***if and only if*** it was the first thread to be interrupted out of all the threads waiting for the barrier to be broken.
     - the thread is interrupted, and if the barrier was already broken by another thread, throws a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
-- **Additional notes**:.
-    - If the last thread to enter the barrier throws a `throwable` when executing the runnable task, the barrier is broken.
-     and all the other threads waiting for the barrier to be broken will throw a `BrokenBarrierException`.
 
 ### ThreadSafeContainer
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeContainer.kt) |
@@ -518,6 +519,8 @@ Also,
 a thread that tries to consume a value from a non-empty container could possibly never consume a value
 if it keeps losing the race against other threads
 that are also trying to the same, which could mean that the container might be emptied by other threads before it can consume a value.
+Although this is relevant to mention, it is not a problem because the container was not specified to be *fair*.
+This event does not lead to *starvation* because the thread will return `null` and will not be blocked indefinitely.
 
 #### Public interface
 ```kotlin
@@ -539,6 +542,10 @@ as well as how a value is represented.
 #### Style of synchronization
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that fails to consume a value from the container will retry until possible.
+
+In the implementation,
+both the `index` of the array of values and the `lives` property of each `value` were needed to be
+updated atomically, and therefore both are represented by an [AtomicInteger](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/atomic/AtomicInteger.html). 
 
 An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
@@ -565,9 +572,10 @@ the container is empty.
 
 #### Description
 A thread-safe-counted holder is a container
-that holds a `value` that internally has a `counter` that specifies how many times the value was used.
-If the counter reaches zero, the value is automatically *closed*, since it implements the 
-[Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface.
+that holds a resource `value` that internally has a `counter` that specifies how many times the value was used.
+If the counter reaches zero, the value is automatically *closed*, and since it implements the 
+[Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface, it can be closed 
+by calling the `close` method.
 
 #### Public interface
 ```kotlin
@@ -578,9 +586,8 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
 }
 ```
 
-The following images illustrate the state of the holder when a thread tries to use the value,
-and after a thread decrements the usage counter of the value and
-the value is closed because the counter reached zero.
+The following images illustrate the state of the holder when a thread tries to use the value that is not closed,
+and after a thread decrements the usage counter of the value, and the counter reaches zero.
 
 |         ![Thread-Safe Counted Holder Try Use](src/main/resources/set2/thread-safe-counted-holder-try-use.png)         |
 |:---------------------------------------------------------------------------------------------------------------------:|
@@ -590,6 +597,11 @@ the value is closed because the counter reached zero.
 #### Style of synchronization
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that fails to increment/decrement the usage counter of the value will retry until possible.
+
+The `usage counter` is incremented/decremented
+atomically using the [AtomicInteger](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/atomic/AtomicInteger.html) class
+while the `value` itself was considered to be *volatile* and not atomic, as it provides the necessary guarantees of 
+thread-safety and visibility without incurring unnecessary overhead.
 
 An implementation that is not thread-safe, and that was the starting point of this implementation,
 can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
@@ -602,10 +614,10 @@ can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCoun
 `tryStartUse`:
 - **Paths** - The thread can take two major paths when calling this method:
     - **fast-path**
-        - the `value` is already null, which means the resource was closed, and as such, null is returned (cannot be reused).
+        - the `value` is already `null`, which means the resource was closed, and as such, null is returned (cannot be reused).
     - **retry-path**
         - the `value` is not closed, so this thread tries to increment the usage counter if possible, and if it is, returns the `value`.
-        - while trying to increment the usage counter, the threads sees that the counter is zero, indicates that the resource is closed, null is returned (cannot be reused).
+        - while trying to increment the usage counter, the threads see that the counter is zero, indicating that some other thread closed the resource, this thread returns `null`.
       
 `endUse`:
 - **Paths** - The thread can take two major paths when calling this method:
@@ -613,7 +625,7 @@ can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCoun
         - the `value` is already null, since it was closed, and as such, `IllegalStateException` is thrown.
     - **retry-path**
         - the `value` is not closed, so this thread tries to decrement the usage counter if possible, and if it is, returns immediately.
-        - while trying to decrement the usage counter, the threads see that the counter is zero, indicating that some other thread closed the resource, this thread throws `IllegalStateException`.
+        - while trying to decrement the usage counter, if the threads see that the counter reached zero, indicating that some other thread closed the resource, this thread throws `IllegalStateException`.
         - if the thread that decrements the usage counter sees the counter reaching zero, the thread closes the resource and sets the `value` to null.
 
 ### LockFreeCompletionCombinator
@@ -627,10 +639,8 @@ that minimizes the usage of locks to synchronize access to shared state. It prov
 #### Public interface
 ```kotlin
 class LockFreeCompletionCombinator : CompletionCombinator {
-
     @Throws(IllegalArgumentException::class)
     override fun <T> all(inputStages: List<CompletionStage<T>>): CompletionStage<List<T>>
-
     @Throws(IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T>
 }
@@ -645,13 +655,12 @@ The following image illustrates the combinators respective possible output when 
 #### Style of synchronization
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that sees a change of state will try to update the state of the combinator until it can
-or sees another thread updating the state.
+or sees that the state has already been updated by another thread.
 
-The combinators implementation uses the [TreiberStack](src/main/kotlin/pt/isel/pc/problemsets/sync/lockfree/TreiberStack.kt) data structure,
-learned in lectures, which is a lock-free stack.
+The combinators implementation uses the [TreiberStack](src/main/kotlin/pt/isel/pc/problemsets/sync/lockfree/TreiberStack.kt) data structure, which is a lock-free stack.
 A `toList` method was added to this stack to return a list of the elements in it. The method was also designed to be lock-free,
 although it will always provide a *snapshot* of the stack at the time of the call
-and cannot guarantee the current state of the stack.
+and cannot guarantee the current state of the stack did not change after the call.
 
 An implementation that is *lock-based*,
 and that was the starting point of this implementation,
@@ -683,7 +692,7 @@ the property was implemented as a [lazy](https://kotlinlang.org/docs/delegated-p
 meaning the list is only created if and when the property is called.
 
 Additionally, `LazyThreadSafetyMode.PUBLICATION` was used to ensure that the list is created only once,
-even if multiple initializations occur concurrently."
+even if multiple initializations occur concurrently.
 
 #### Normal Execution
 - A thread calls the `all` method and passes a list of `CompletionStage` implementations, expecting a list of input stages as a result.
@@ -717,7 +726,7 @@ stage completes, and in that handler a few paths can be associated:
       returns immediately.
     - **retry-path-on-success**
         - the `futureToReturn` is not yet complete, and this thread sees that the stage associated with
-      the handler completed succesfully, and as such it tries to mark the `futureToReturn` a*completed*,
+      the handler completed succesfully, and as such it tries to mark the `futureToReturn` as *completed*,
       but enters a retry cycle since another thread might have done that in the meantime.
       If the thread is successful in marking the `futureToReturn` as *completed*,
       it will complete it successfully with the result of the input stage and return.
@@ -730,12 +739,12 @@ stage completes, and in that handler a few paths can be associated:
       input stage and return.
 
 ### Monitor style vs Kernel style
-In the monitor-style of synchronization, the thread that creates favorable conditions for other threads to advance
+In the `Monitor-style` of synchronization, the thread that creates favorable conditions for other threads to advance
 to the next state signals those threads.
 It is the responsibility of those other threads to complete their own request of sorts after they exit the condition
-where they were waiting.
+where they were waiting upon.
 
-In the kernel-style or delegation of execution,
+In the `Kernel-style` or `Delegation of execution`,
 the thread that creates favorable conditions for other threads to advance to the next state is responsible
 for completing the requests of those other threads.
 In successful cases,
@@ -744,11 +753,11 @@ to do anything besides confirming that their request was completed and return im
 This style of synchronization is usually associated with one or more requests
 that a thread or threads want to see completed,
 and they delegate that completion to another thread, while keeping a local reference to that request, which then enables
-the syncronizer to resume its functions without waiting for said requests to be completed. 
+the synchronizer to resume its functions without waiting for said requests to be completed. 
 
 For general purpose, the kernel-style is the preferred one, 
 since it is more flexible and easier to implement, but the choice will always be dependent
-on the context of the syncronazation problem.
+on the context of the synchronization problem.
 
 ### Lock-based vs Lock-free algorithms
 The lock-based algorithms use a `lock` to ensure that only one thread can access the shared state at a given time.
@@ -760,7 +769,7 @@ The lock-based algorithms use a `lock` to ensure that only one thread can access
        // code to be synchronized
     }
     ```
-- syncronized methods (*intrinsic lock*)
+- synchronized methods (*intrinsic lock*)
     ```kotlin
     @Synchronized 
     fun method() {
@@ -777,14 +786,16 @@ The lock-based algorithms use a `lock` to ensure that only one thread can access
     ```
 Meanwhile, the lock-free algorithms are based on atomic operations that ensure that multiple threads can access shared state concurrently without interfering with each other. 
 This allows for efficient concurrent access without the overhead and potential contention of locking mechanisms.
-Most algorithms use atomic variables to ensure that the shared state is accessed atomically.
+Most algorithms use atomic variables and retry loops to achieve this.
 
 #### Volatile vs Atomic
 When a variable is marked as `volatile`, any *write* to that variable is immediately visible to all other threads,
 and any *read* of that variable is guaranteed to see the most recent write
 (*[happens-before relation](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)*).
-This is guaranteed by the [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html), which is 
-then implemented by the `Java Virtual Machine`.
+The guarantee of visibility is only for the variable itself,
+not for the state of the object it refers to or any other variables.
+This is guaranteed by the [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html),
+which is then implemented by the `Java Virtual Machine`.
 
 ```kotlin
 @Volatile var sharedState: Any = Any()

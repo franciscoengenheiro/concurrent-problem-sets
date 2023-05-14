@@ -19,7 +19,7 @@ import kotlin.time.Duration
  * a [Future].
  * The [shutdown] method can be used to prevent new work items from being accepted, but
  * previously submitted work items will still be executed.
- * To syncronize with the shutdown process, one should call [awaitTermination] method.
+ * To synchronize with the shutdown process, one should call [awaitTermination] method.
  * @param maxThreadPoolSize the maximum number of worker threads inside the thread pool.
  * @param keepAliveTime maximum time that a worker thread can be idle before being terminated.
  */
@@ -76,7 +76,7 @@ class ThreadPoolExecutorWithFuture(
     }
 
     /**
-     * Provides a way to syncronize with the shut down of the thread pool executor.
+     * Provides a way to synchronize with the shut down of the thread pool executor.
      * @param timeout the maximum time to wait for the thread pool executor to shut down.
      * @return true if the thread pool executor has been shut down, false if it didn't
      * in the given timeout.

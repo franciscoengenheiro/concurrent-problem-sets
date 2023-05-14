@@ -10,7 +10,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Similar to a [ArrayBlockingQueue], this syncronizer supports the communication between multiple threads
+ * Similar to a [ArrayBlockingQueue], this synchronizer supports the communication between multiple threads
  * or processes, using the Kernel or Delegation of execution synchronization style. An internal queue is used to store
  * messages that are inserted by *producer threads* and extracted by *consumer threads*.
  * This queue orders elements in FIFO (*first-in-first-out*) order to avoid *thread starvation*.

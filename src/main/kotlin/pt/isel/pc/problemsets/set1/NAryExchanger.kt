@@ -7,7 +7,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * A blocking exchange syncronization mechanism that allows [groupSize] threads to exchange values,
+ * A blocking exchange synchronization mechanism that allows [groupSize] threads to exchange values,
  * using the Kernel or Delegation of execution synchronization style.
  * The threads that call [exchange] will block until the group is completed by another thread.
  * When the group is completed, all threads that called [exchange] will resume their work with

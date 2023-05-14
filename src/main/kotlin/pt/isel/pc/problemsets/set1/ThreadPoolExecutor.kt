@@ -1,8 +1,6 @@
 package pt.isel.pc.problemsets.set1
 
 import org.slf4j.LoggerFactory
-import pt.isel.pc.problemsets.set1.ThreadPoolExecutor.GetWorkItemResult.Exit
-import pt.isel.pc.problemsets.set1.ThreadPoolExecutor.GetWorkItemResult.WorkItem
 import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.locks.ReentrantLock
@@ -17,7 +15,7 @@ import kotlin.time.Duration
  * To execute a work item, the [execute] method can be used.
  * The [shutdown] method can be used to prevent new work items from being accepted, but
  * previously submitted work items will still be executed.
- * To syncronize with the shutdown process, the [awaitTermination] method
+ * To synchronize with the shutdown process, the [awaitTermination] method
  * can be used.
  * @param maxThreadPoolSize the maximum number of worker threads inside the thread pool.
  * @param keepAliveTime maximum time that a worker thread can be idle before being terminated.
@@ -68,7 +66,7 @@ class ThreadPoolExecutor(
     }
 
     /**
-     * Provides a way to syncronize with the shut-down of the thread pool executor.
+     * Provides a way to synchronize with the shut-down of the thread pool executor.
      * @param timeout the maximum time to wait for the thread pool executor to shut down.
      * @return true if the thread pool executor has been shut down, false if it didn't
      * in the given timeout.
