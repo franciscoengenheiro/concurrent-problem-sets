@@ -4,13 +4,13 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A thread-safe container that allows multiple threads to consume its values using the [consume] method.
- * The container is initialized with a set [AtomicValue]s, each with a number of lives, that represents the number of times
+ * The container is initialized with a set [AtomicConsumableValue]s, each with a number of lives, that represents the number of times
  * that value can be consumed by a thread.
- * @param T the type of [AtomicValue]s to be consumed.
- * @param values an array of [AtomicValue]s.
+ * @param T the type of [AtomicConsumableValue]s to be consumed.
+ * @param values an array of [AtomicConsumableValue]s.
  * @throws IllegalArgumentException if [values] is empty.
  */
-class ThreadSafeContainer<T>(private val values: Array<AtomicValue<T>>) {
+class ThreadSafeContainer<T>(private val values: Array<AtomicConsumableValue<T>>) {
     private val index = AtomicInteger(0)
 
     init {

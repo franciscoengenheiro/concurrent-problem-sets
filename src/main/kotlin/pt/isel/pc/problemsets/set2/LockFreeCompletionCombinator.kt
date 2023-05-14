@@ -64,7 +64,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
         return futureToReturn
     }
 
-    @Throws(AggregationError::class, IllegalArgumentException::class)
+    @Throws(IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
         require(inputStages.isNotEmpty()) { "inputStages must not be empty" }
         val futureToReturn = CompletableFuture<T>()

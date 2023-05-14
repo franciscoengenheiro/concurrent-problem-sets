@@ -482,7 +482,7 @@ The following image shows a possible representation of the previous states in a 
     - **fast-path** 
         - the current barrier has already been broken, and as such, the thread throws a `BrokenBarrierException`.
         - the barrier has not yet been broken, and this thread is the last one to enter the barrier:
-            - if a runnable task was provided and its execution throws a `throwable`, the barrier is broken and all threads waiting at the barrier are released with a `BrokenBarrierException`, and the thread returns the same `throwable`.
+            - if a runnable task was provided and its execution throws a `throwable`, the barrier is broken, and all threads waiting at the barrier are released with a `BrokenBarrierException`, and the thread returns the same `throwable`.
             - if a runnable task was not provided, or its execution completes successfully, the barrier is opened, a new generation is created, and the thread returns `0`.
         - A thread that specifies a timeout of *zero* and does not complete the barrier will not wait for that event and throws a `TimeoutException` immediately.
     - **wait-path**
@@ -502,7 +502,7 @@ The following image shows a possible representation of the previous states in a 
 #### Description
 A thread-safe container is a container that allows multiple threads to consume the values it 
 contains using the `consume` method.
-The container receives an array of [AtomicValue](src/main/kotlin/pt/isel/pc/problemsets/set2/AtomicValue.kt)s,
+The container receives an array of [AtomicConsumableValue](src/main/kotlin/pt/isel/pc/problemsets/set2/AtomicConsumableValue.kt)s,
 that cannot be empty.
 Each value has a number of lives that represent the number of times that value can be consumed by a thread.
 
@@ -513,7 +513,7 @@ There's no garantee which value will be consumed by a thread, nor each life.
 #### Public interface
 ```kotlin
 class ThreadSafeContainer<T>(
-    private val values: Array<AtomicValue<T>>
+    private val values: Array<AtomicConsumableValue<T>>
 ) {
     fun consume(): T
 }
@@ -631,7 +631,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
     @Throws(IllegalArgumentException::class)
     override fun <T> all(inputStages: List<CompletionStage<T>>): CompletionStage<List<T>>
 
-    @Throws(AggregationError::class, IllegalArgumentException::class)
+    @Throws(IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T>
 }
 ```
