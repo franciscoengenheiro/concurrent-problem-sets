@@ -5,21 +5,28 @@
 - Student: `49428 - Francisco Engenheiro - LEIC41D`
 
 ## Table of Contents
-- [Set1](#set1)
+- [Set-1](#set-1)
   - [NAryExchanger](#naryexchanger)
   - [BlockinMessageQueue](#blockingmessagequeue)
   - [ThreadPoolExecutor](#threadpoolexecutor)
   - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
     - [Promise](#promise)
-- [Set2](#set2)
+- [Set-2](#set 2)
   - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
   - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
+- [Set-3](#set-3)
+  - [Base implementation Design](#base-implementation-design)
+  - [Functionality](#functionality)
+  - [Requirements](#requirements)
+  - [Solution](#solution)
+    - [SuspendMessageQueue](#suspendmessagequeue)
+    - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
 - [Monitor style vs Kernel style](#monitor-style-vs-kernel-style)
 - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
 
-## Set1
+## Set-1
 ## NAryExchanger
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/NAryExchanger.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/NAryExchangerTests.kt)
 
@@ -390,7 +397,7 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
         - but was rejected, throws an `ExecutionException`.
         - but was resolved, returns the result of the task execution.
 
-## Set2
+## Set-2
 ## CyclicBarrier
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrier.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrierTests.kt)
@@ -739,6 +746,69 @@ stage completes, and in that handler a few paths can be associated:
       is successful in marking the `futureToReturn` as *completed*, it will complete it exceptionally
       with an `AggregationError` containing a list of the exceptions that caused the failure of each 
       input stage and return.
+
+## Set-3
+In this set,
+the main goal is to implement a server system with a `TCP/IP` interface for exchanging messages between clients and
+a server, using the `coroutines` concurrency mechanism, instead of `threads` to handle each client connection.
+
+### Base Implementation Design
+A base implementation of the entire system was provided in order to facilitate the development of the solution,
+and uses the following design:
+- Each server instance has one thread to listen for new connections and creates a client instance for each. Most of the time, this thread will be blocked waiting for a new connection.
+
+- Each client instance uses **two** threads:
+    - a **main thread** that reads and processes control-messages from a control queue. These control messages can be:
+        - A text message posted to a room where the client is present.
+        - A text line sent by the remote connected client.
+        - An indication that the read stream from the remote-connected client ended.
+        - An indication that the handling of the client should end (e.g. because the server is ending).
+    - a **read thread** that reads lines from the remote client connection and transforms these into control messages sent to the main thread.
+- Most interactions with the client are done by sending messages to the client control queue.
+
+This design has two major drawbacks:
+- it uses a *threads* per connection, requiring two platform threads per connected client.
+- both client threads are blocked when reading a client message from the socket and when reading from the internal message queue, respectively.
+
+### Functionality
+Client systems interact with the server system by sending lines of text, which can be **commands** or **messages**.
+
+A command begins with `'/'`, followed by the command name and zero or
+more arguments, whereas a message is any line of text that does not begin with `'/'`.
+
+The server system is organized into `rooms`. Each client system can be in zero or one room.
+After the first connection, client systems are not in any room, and must join one if they wish to send or receive
+messages from other clients.
+When a client is in a room, it can send messages to that room and receive all the messages sent by other clients
+present in that room.
+
+The commands a client system can send over a `TCP/IP` connection are:
+- `/enter <room-name>` - enters the room <room-name>, creating it if necessary.
+- `/leave` - leave the room it is in.
+- `/exit` - terminates the connection to the server.
+
+The system must also accept the following commands sent locally via standard input:
+- `/shutdown timeout` - starts the server shutdown process, no longer accepting connections but
+waiting for all connections to terminate within the given timeout seconds. All clients should receive a message notifying
+that the shutdown process has started. If there are still clients connected after timeout seconds, the server should abruptly terminate.
+- `/exit` - abruptly terminates the server.
+
+### Requirements
+The developed system should meet the following requirements:
+- use a number of threads there are appropriate to the computational capacity and not proportional to the number of connected clients.
+- continue to handle a large number of clients simultaneously.
+- not block the threads that handle the client connections or any other threads in the system unless absolutely necessary.
+
+### Solution
+In order to provide a solution to the problem, the following steps were taken:
+- A [SuspendMessageQueue](#suspendmessagequeue) class was implemented to provide a communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `Control queue`, does not provide `coroutine` synchronization.
+- Two [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions) were implemented to provide a way to read and write to a socket without blocking the calling thread, respectively.
+
+#### SuspendMessageQueue
+TODO()
+
+#### Asynchronous Socket Extension Functions
+TODO()
 
 ## Monitor style vs Kernel style
 In the `Monitor-style` of synchronization, the thread that creates favorable conditions for other threads to advance
