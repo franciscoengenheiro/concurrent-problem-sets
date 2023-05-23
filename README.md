@@ -11,7 +11,7 @@
   - [ThreadPoolExecutor](#threadpoolexecutor)
   - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
     - [Promise](#promise)
-- [Set-2](#set 2)
+- [Set-2](#set-2)
   - [CyclicBarrier](#cyclicBarrier)
   - [ThreadSafeContainer](#threadsafecontainer)
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
@@ -21,7 +21,7 @@
   - [Functionality](#functionality)
   - [Requirements](#requirements)
   - [Solution](#solution)
-    - [SuspendMessageQueue](#suspendmessagequeue)
+    - [AsyncMessageQueue](#asyncmessagequeue)
     - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
 - [Monitor style vs Kernel style](#monitor-style-vs-kernel-style)
 - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
@@ -768,7 +768,9 @@ and uses the following design:
 
 This design has two major drawbacks:
 - it uses a *threads* per connection, requiring two platform threads per connected client.
-- both client threads are blocked when reading a client message from the socket and when reading from the internal message queue, respectively.
+- both client threads are blocked when reading a client message from the socket and when reading from the control message queue, respectively.
+
+A solution to these drawbacks is presented in this [section](#solution).
 
 ### Functionality
 Client systems interact with the server system by sending lines of text, which can be **commands** or **messages**.
@@ -779,7 +781,7 @@ more arguments, whereas a message is any line of text that does not begin with `
 The server system is organized into `rooms`. Each client system can be in zero or one room.
 After the first connection, client systems are not in any room, and must join one if they wish to send or receive
 messages from other clients.
-When a client is in a room, it can send messages to that room and receive all the messages sent by other clients
+When a client is in a room, it can send messages to that room and will receive all the messages sent by other clients
 present in that room.
 
 The commands a client system can send over a `TCP/IP` connection are:
@@ -801,13 +803,13 @@ The developed system should meet the following requirements:
 
 ### Solution
 In order to provide a solution to the problem, the following steps were taken:
-- A [SuspendMessageQueue](#suspendmessagequeue) class was implemented to provide a communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `Control queue`, does not provide `coroutine` synchronization.
+- A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
 - Two [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions) were implemented to provide a way to read and write to a socket without blocking the calling thread, respectively.
 
-#### SuspendMessageQueue
+### AsyncMessageQueue
 TODO()
 
-#### Asynchronous Socket Extension Functions
+### Asynchronous Socket Extension Functions
 TODO()
 
 ## Monitor style vs Kernel style

@@ -69,9 +69,9 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
             // fast-path:
             if (consumerRequestsQueue.notEmpty && consumerRequestsQueue.headNode?.value?.nOfMessages == 1) {
                 // The thread that tries to enqueue a message can do it immediately because it
-                // there a consumer thread waiting to dequeue the message,
+                // there is a consumer thread waiting to dequeue the message,
                 // and it's requesting a single message
-                // which this producer thread can complete by delivering the message direclty.
+                // which this producer thread can complete by delivering the message directly.
                 completeConsumerRequest(listOf(message))
                 return true
             }
@@ -134,7 +134,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     @Throws(InterruptedException::class, IllegalArgumentException::class)
     fun tryDequeue(nOfMessages: Int, timeout: Duration): List<T>? {
         require(nOfMessages in 1..capacity) {
-            "nOfMessages must be greater than zero and below or equal maximum capacity" }
+            "nOfMessages must be greater than zero and below or equal the maximum capacity" }
         lock.withLock {
             // fast-path -> The thread that tries to dequeue a set of messages can do it immediately because it
             // is the first thread at the head of the consumer requests queue and the message queue has enough
