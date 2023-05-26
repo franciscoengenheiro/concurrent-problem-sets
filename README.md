@@ -23,7 +23,7 @@
   - [Solution](#solution)
     - [AsyncMessageQueue](#asyncmessagequeue)
     - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
-- [Monitor style vs Kernel style](#monitor-style-vs-kernel-style)
+- [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
 - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
 
 ## Set-1
@@ -803,23 +803,23 @@ The developed system should meet the following requirements:
 
 ### Solution
 In order to provide a solution to the problem, the following steps were taken:
-- A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
+- A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a syncronized communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
 - Two [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions) were implemented to provide a way to read and write to a socket without blocking the calling thread, respectively.
 
 ### AsyncMessageQueue
 TODO()
 
 ### Asynchronous Socket Extension Functions
-TODO()
+TODO("talk about the way coroutines allow the writing of asynchronous code as if it were sequential")
 
-## Monitor style vs Kernel style
-In the `Monitor-style` of synchronization, the thread that creates favorable conditions for other threads to advance
+## Monitor vs Kernel Syncronization style
+In the `Monitor` style of synchronization, the thread that creates or sees favorable conditions for other threads to advance
 to the next state signals those threads.
 It is the responsibility of those other threads to complete their own request of sorts after they exit the condition
 where they were waiting upon.
 
-In the `Kernel-style` or `Delegation of execution`,
-the thread that creates favorable conditions for other threads to advance to the next state is responsible
+In the `Kernel` or `Delegation of execution` synchronization style,
+the thread that creates or sees favorable conditions for other threads to advance to the next state is responsible
 for completing the requests of those other threads.
 In successful cases,
 the threads in the dormant state that were signaled do not have

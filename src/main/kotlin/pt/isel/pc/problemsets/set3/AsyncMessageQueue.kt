@@ -4,7 +4,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -13,11 +12,12 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Represents a thread-safe queue that can be used to exchange messages between threads
- * in a *non-blocking* way, using *asynchronous* operations that take advantage of coroutines and suspending functions.
- * This class provides a coroutine synchronization mechanism which is not present in the standard library.
+ * This class represents a synchronized message queue that allows producers to enqueue messages and consumers to
+ * dequeue messages. The queue is implemented using coroutines, which allows the operations to be performed
+ * in a *non-blocking* way, using *asynchronous* operations that take advantage of coroutines possible
+ * suspension points.
  * The queue is bounded, which means that it has a maximum [capacity].
- * This queue orders elements in FIFO (*first-in-first-out*) ordering.
+ * This queue orders elements in FIFO (*first-in-first-out*) ordering, to avoid suspending a coroutine indefinitely.
  * @param capacity the maximum number of messages that can be enqueued. Once created, the capacity cannot be changed.
  * @throws IllegalArgumentException if [capacity] is less than 1.
  */
@@ -36,9 +36,11 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     )
 
     private class ConsumerRequest<T>(
-        val duration: Duration,
+        val startTime: Long,
+        val deadline: Long,
         val continuation: Continuation<T>,
-        var canResume: Boolean = false
+        var message: T? = null,
+        var canResume: Boolean = false,
     )
 
     // Queues
@@ -46,35 +48,46 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     private val consumerQueue = ConcurrentLinkedQueue<ConsumerRequest<T>>()
     private val messageQueue = ConcurrentLinkedQueue<T>()
 
-    // TODO(Notes:
-    //  1. A continuation cannot be called inside a lock, works similar to future's callbacks.
-    //  2. Although coroutines are used, the mutable state of the queue is still accessed by multiple threads.
-    //  3. Use Kernel-style synchronization?!
-    //  4. If a coroutine sees the message queue is full,
-    //  it places the continuation in the queue and suspends itself.
     /**
      * Enqueues a message into the queue. If the queue is **full**, the operation is suspended until there is space
      * available in the queue.
      * @param message the message to enqueue.
      */
-    suspend fun enqueue(message: T) {
+    suspend fun enqueue(message: T): Unit {
+        lock.lock()
         // fast-path: if there are no pending producer requests and there is space available, enqueue the message
-        lock.withLock {
-            if (producerQueue.isEmpty() && messageQueue.size < capacity) {
-                messageQueue.add(message)
-                val consumerRequest = consumerQueue.poll()
-                // "signal" the consumer request that it can resume
-                // necessary since no continuation method can be called inside a lock
+        if (producerQueue.isEmpty() && messageQueue.size <= capacity) {
+            messageQueue.add(message)
+            // TODO("complete only one or all pending consumer requests that can be completed?")
+            // mark all pending consumer requests as resumable
+            // if there is a message available in the queue
+            while (consumerQueue.isNotEmpty() && messageQueue.isNotEmpty()) {
+                val consumerRequest: ConsumerRequest<T> = consumerQueue.poll()
+                consumerRequest.message = messageQueue.poll()
                 consumerRequest.canResume = true
-                return
             }
+            lock.unlock()
+            return
         }
+        val observedConsumers = consumerQueue.toList()
         // suspend-path: if there is no space available or there are pending producer requests, place
-        // the continuation in the producer requests queue and suspend the coroutine
-        return suspendCoroutine { continuation ->
+        // the continuation in the producer requests queue and suspend the coroutine until it can resume
+        suspendCoroutine { continuation ->
             val producerRequest = ProducerRequest(message, continuation)
             producerQueue.add(producerRequest)
-            // TODO("additional logic here")
+            lock.unlock()
+            observedConsumers.forEach {
+                if (it.canResume) {
+                    if (it.deadline >= System.currentTimeMillis() - it.startTime) {
+                        // deadline reached, resume with TimeoutException
+                        it.continuation.resumeWithException(TimeoutException())
+                    } else {
+                        val retrievedMessage = it.message
+                        requireNotNull(retrievedMessage) { "message cannot be null on a resumed consumer request" }
+                        it.continuation.resume(retrievedMessage)
+                    }
+                }
+            }
         }
     }
 
@@ -88,44 +101,47 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
      */
     @Throws(TimeoutException::class)
     suspend fun dequeue(timeout: Duration): T {
-        // fast-path A: if there are no pending consumer requests and there is a message available, dequeue the message
-        lock.withLock {
-            if (consumerQueue.isEmpty() && messageQueue.isNotEmpty()) {
-                val message: T = messageQueue.poll()
-                val producerRequest = producerQueue.poll()
-                // "signal" the producer request that it can resume
-                // necessary since no continuation method can be called inside a lock
-                producerRequest.canResume = true
-                return message
+        lock.lock()
+        // fast-path A: if there are no pending consumer requests and there is at least a
+        // message available, dequeue the message
+        if (consumerQueue.isEmpty() && messageQueue.isNotEmpty()) {
+            val message: T = messageQueue.poll()
+            // mark all pending producer requests as resumable if there is space available in the queue
+            while (producerQueue.isNotEmpty() && messageQueue.size <= capacity) {
+                val producerRequest: ProducerRequest<T> = producerQueue.poll()
+                producerRequest.let {
+                    messageQueue.add(it.message)
+                    it.canResume = true
+                }
             }
+            lock.unlock()
+            return message
         }
-        // fast-path B: the thread executing the coroutine does not want it to be suspended
-        if (timeout == 0.seconds) {
-            throw TimeoutException()
-        }
-
-        // suspend-path: if there is no message available or there are pending consumer requests, place
-        // the continuation in the consumer requests queue and suspend the coroutine
-        return suspendCoroutine { continuation ->
-            // keep reference to the consumer request so that it can be removed from the queue
-            // when the coroutine is resumed or canceled
-            val consumerRequest = ConsumerRequest(timeout, continuation)
-            consumerQueue.add(consumerRequest)
-            // TODO("additional logic here, like cancellation")
-            // TODO("this logic might needs to be placed elsewhere")
-            // TODO("need to suspend again, at least for timeout duration, but how?")
-            if (consumerRequest.canResume) {
-                // Do not need to remove since the coroutine that enabled the continuation
-                // already took the consumer request from the queue
-                continuation.resume(???)
-            } else {
-                // if the coroutine is resumed, remove the consumer request from the queue
-                // and "signal" the consumer request that it can resume
-                consumerQueue.remove(consumerRequest)
+        val observedProducers = producerQueue.toList()
+        val message: T = suspendCoroutine { continuation ->
+            // fast-path B: if the specified timeout is 0, throw a TimeoutException and do not suspend the coroutine
+            if (timeout == 0.seconds) {
+                lock.unlock()
                 continuation.resumeWithException(TimeoutException())
+            } else {
+                // suspend-path: if there is no message available or there are pending consumer requests, place
+                // the continuation in the consumer requests queue and suspend the coroutine until it can resume
+                val consumerRequest = ConsumerRequest(
+                    startTime = System.currentTimeMillis(),
+                    deadline = timeout.inWholeMilliseconds,
+                    continuation = continuation
+                )
+                consumerQueue.add(consumerRequest)
+                lock.unlock()
+            }
+            // try to complete a pending producer request outside the lock
+            observedProducers.forEach {
+                if (it.canResume) {
+                    it.continuation.resume(Unit)
+                }
             }
         }
+        return message
     }
 
-    private suspend fun completeProducerRequests()
 }
