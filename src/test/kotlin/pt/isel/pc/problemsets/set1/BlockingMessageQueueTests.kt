@@ -129,7 +129,7 @@ internal class BlockingMessageQueueTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         // This test could not be generic (for any capacity) since having control of the producer thread,
         // which is the "last" one to start, is required
-        val pth1 = testHelper.createAndStartThread {
+        testHelper.createAndStartThread {
             val couldEnqueue = queue.tryEnqueue(defaultMsg, Duration.INFINITE)
             assertTrue(couldEnqueue)
         }

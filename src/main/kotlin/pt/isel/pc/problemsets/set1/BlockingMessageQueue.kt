@@ -198,8 +198,9 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     /**
      * Completes a [ConsumerRequest] request by dequeuing a set of messages from the message queue or by providing
      * a list of messages to be used to complete the request.
+     * This method should only be called inside a thread-safe environment, since it checks and
+     * alters the internal state of the queue.
      * @param directMessages a list of messages to be used to complete the request.
-     * This method assumes that the lock is already acquired.
      * If null, the messages will be dequeued from the message queue.
      */
     private fun completeConsumerRequest(directMessages: List<T>? = null) {
@@ -211,7 +212,8 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
 
     /**
      * Tries to complete all [ProducerRequest] if there is any and the message queue is not full.
-     * This method assumes that the lock is already acquired.
+     * This method should only be called inside a thread-safe environment, since it checks and
+     * alters the internal state of the queue.
      */
     private fun tryToCompleteProducerRequests() {
         while (producerRequestsQueue.notEmpty && messageQueue.count < capacity) {
