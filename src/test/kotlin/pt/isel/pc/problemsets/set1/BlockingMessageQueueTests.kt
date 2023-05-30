@@ -212,7 +212,7 @@ internal class BlockingMessageQueueTests {
 
     // Tests with concurrency stress:
     @RepeatedTest(5)
-    fun `An arbitrary number of producer and consumer threads should be able to exchange messages without losing any exchanged`() {
+    fun `An arbitrary number of producer and consumer threads should be able to exchange messages without losing any`() {
         val capacity = 20
         val queue = BlockingMessageQueue<ExchangedValue>(capacity)
         val nOfThreads = 24
