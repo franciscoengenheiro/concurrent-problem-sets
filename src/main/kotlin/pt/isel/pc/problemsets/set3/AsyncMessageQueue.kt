@@ -87,14 +87,14 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
                 lock.unlock()
             }
         } catch (ex: CancellationException) {
-            val observedRequest = producerRequest
-            if (observedRequest.canResume) {
-                return
-            } else {
-                lock.withLock {
+            lock.withLock {
+                val observedRequest = producerRequest
+                if (observedRequest.canResume) {
+                    return
+                } else {
                     producerQueue.remove(observedRequest)
+                    throw ex
                 }
-                throw ex
             }
         }
     }
@@ -136,7 +136,8 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
         }
         lateinit var consumerRequest: ConsumerRequest<T>
         try {
-            val message: T? = withTimeoutOrNull(timeout) {
+            // the request could be completed even though the timeout was reached
+            return withTimeoutOrNull(timeout) {
                 suspendCancellableCoroutine { continuation ->
                     // suspend-path: if there is no message available or there are pending consumer requests, place
                     // the continuation in the consumer requests queue and suspend the coroutine until it can resume
@@ -144,19 +145,32 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
                     consumerQueue.add(consumerRequest)
                     lock.unlock()
                 }
-            }
-            return message ?: throw TimeoutException()
+            } ?: messageOrException(consumerRequest, TimeoutException())
         } catch (ex: CancellationException) {
-            val observedRequest = consumerRequest
-            if (observedRequest.canResume) {
-                val message: T? = observedRequest.message
+            lock.withLock {
+                return messageOrException(consumerRequest, ex)
+            }
+        }
+    }
+
+    /**
+     * Observes a consumer request and makes a decision based on the state of the request, to either return
+     * the message or throw an exception.
+     * @param observedConsumerRequest the consumer request to observe.
+     * @param exceptionToThrow the exception to throw if the consumer request cannot resume.
+     */
+    private fun messageOrException(
+        observedConsumerRequest: ConsumerRequest<T>,
+        exceptionToThrow: Exception
+    ): T & Any {
+        lock.withLock {
+            if (observedConsumerRequest.canResume) {
+                val message: T? = observedConsumerRequest.message
                 requireNotNull(message) { "message of a resumed consumer request cannot be null" }
                 return message
             } else {
-                lock.withLock {
-                    consumerQueue.remove(observedRequest)
-                }
-                throw ex
+                consumerQueue.remove(observedConsumerRequest)
+                throw exceptionToThrow
             }
         }
     }

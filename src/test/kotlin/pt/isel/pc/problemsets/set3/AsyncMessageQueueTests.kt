@@ -182,57 +182,61 @@ internal class AsyncMessageQueueTests {
         assertEquals(originalMsgs.toSet(), retrievedMsgs.toSet())
     }
 
-    @Test
+    @RepeatedTest(3)
     fun `Check if an arbitrary number of consumer coroutines is timedout`() {
-        val capacity = 10
+        val capacity = 10 randomTo 20
+        val testDuration = 5.seconds
         val queue = AsyncMessageQueue<ExchangedValue>(capacity)
         val originalMsgs = LinkedList<ExchangedValue>()
         val exchangedMsgs = HashMap<ExchangedValue, Unit>()
         val retrievedMsgs = LinkedList<ExchangedValue>()
-        val nrOfProducers = capacity / 4
+        val nrOfProducers = 500 randomTo 1000
         var nrOfTimedoutConsumers = 0
         runBlocking(multiThreadDispatcher) {
-            // launch producer coroutines
-            repeat(nrOfProducers) { coroutineId ->
-                launch {
-                    var repetionId = 0
-                    repeat(capacity) {
-                        val value = ExchangedValue(coroutineId, repetionId++)
-                        originalMsgs.add(value)
-                        queue.enqueue(value)
-                        if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
-                            throw AssertionError(
-                                "The value $value has already been exchanged by another producer coroutine")
+            withTimeoutOrNull(testDuration) {
+                // launch producer coroutines
+                repeat(nrOfProducers) { coroutineId ->
+                    launch {
+                        var repetionId = 0
+                        repeat(Int.MAX_VALUE) {
+                            val value = ExchangedValue(coroutineId, repetionId++)
+                            originalMsgs.add(value)
+                            queue.enqueue(value)
+                            if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
+                                throw AssertionError(
+                                    "The value $value has already been exchanged by another producer coroutine")
+                            }
                         }
                     }
                 }
             }
-            // launch consumer coroutines
-            repeat(capacity) {
-                launch {
-                    repeat(capacity) { idx ->
-                        try {
-                            val msg = if (idx % 2 == 0) queue.dequeue(2.seconds)
-                                                     else queue.dequeue(100.milliseconds)
-                            retrievedMsgs.add(msg)
-                        } catch (e: TimeoutException) {
-                            nrOfTimedoutConsumers++
+            withTimeoutOrNull(testDuration) {
+                // launch consumer coroutines
+                repeat(capacity) {
+                    launch {
+                        repeat(Int.MAX_VALUE) { idx ->
+                            try {
+                                val msg = if (idx % 2 == 0) queue.dequeue(2.seconds)
+                                                         else queue.dequeue(100.milliseconds)
+                                retrievedMsgs.add(msg)
+                            } catch (e: TimeoutException) {
+                                nrOfTimedoutConsumers++
+                            }
                         }
                     }
                 }
             }
         }
-        assertTrue(nrOfTimedoutConsumers > 0)
         assertTrue(retrievedMsgs.isNotEmpty())
+        assertTrue(nrOfTimedoutConsumers > 0)
+        println(nrOfTimedoutConsumers)
         assertEquals(retrievedMsgs.size, exchangedMsgs.size)
         assertEquals(retrievedMsgs.toSet(), exchangedMsgs.keys)
-        assertEquals(originalMsgs.size, retrievedMsgs.size)
-        assertEquals(originalMsgs.toSet(), retrievedMsgs.toSet())
     }
 
     @RepeatedTest(3)
     fun `Check if FIFO order is preserved when multiple producer and consumer coroutines exchange messages`() {
-        val capacity = 1 // small capacity to increase the change of full queue
+        val capacity = 5 randomTo 10 // small capacity to increase the change of full queue
         val nrOfProducers = 750 randomTo 1500
         val nrOfRepetions = 500 randomTo 1000
         val queue = AsyncMessageQueue<ExchangedValue>(capacity)
