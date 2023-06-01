@@ -23,7 +23,6 @@ import kotlin.time.Duration.Companion.seconds
  * @param capacity the maximum number of messages that can be enqueued. Once created, the capacity cannot be changed.
  * @throws IllegalArgumentException if [capacity] is less than 1.
  */
-
 class AsyncMessageQueue<T>(private val capacity: Int) {
     init {
         require(capacity >= 1) { "capacity must be greater than 0" }
@@ -88,15 +87,15 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
                 lock.unlock()
             }
         } catch (ex: CancellationException) {
-            lock.withLock {
-                val observedRequest = producerRequest
-                if (observedRequest.canResume) {
-                    return@withLock
-                } else {
+            val observedRequest = producerRequest
+            if (observedRequest.canResume) {
+                return
+            } else {
+                lock.withLock {
                     producerQueue.remove(observedRequest)
                 }
+                throw ex
             }
-            throw ex
         }
     }
 
@@ -148,16 +147,17 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
             }
             return message ?: throw TimeoutException()
         } catch (ex: CancellationException) {
-            lock.withLock {
-                val observedRequest = consumerRequest
-                if (observedRequest.canResume) {
-                    val message: T? = observedRequest.message
-                    requireNotNull(message) { "message of a resumed consumer request cannot be null" }
-                    return message
+            val observedRequest = consumerRequest
+            if (observedRequest.canResume) {
+                val message: T? = observedRequest.message
+                requireNotNull(message) { "message of a resumed consumer request cannot be null" }
+                return message
+            } else {
+                lock.withLock {
+                    consumerQueue.remove(observedRequest)
                 }
-                consumerQueue.remove(observedRequest)
+                throw ex
             }
-            throw ex
         }
     }
 }

@@ -862,6 +862,10 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
 
 In the following image, an example can be seen of the iteraction between the producer and consumer coroutines
 with the queue.
+The diagram assumes this order of events:
+- The **producer 4** coroutine enqueues a message.
+- The **producer 5** coroutine suspends its execution, because the queue was full.
+- The **consumer 1** coroutine dequeues a message and resumes the producer 5 coroutine request to enqueue a message.
 
 | ![AsynchronousMessageQueue](src/main/resources/set3/async-message-queue.png) |
 |:----------------------------------------------------------------------------:|
@@ -913,8 +917,24 @@ Both of these request objects have the following properties:
 - **Paths** - The coroutine can take two major paths when calling this method:
     - **fast-path**
         - the *message queue* is not empty, and the coroutine is the head of the *consumer requests queue*, and as such, the coroutine can dequeue the message without suspending.
+        - no timeout was provided, and as such, the coroutine resumes immediately with `TimeoutException`.
     - **resume-path** - the coroutine is not the head of the *consumer requests queue*, and as such, the coroutine is suspended until it is explicitly resumed.
-- **Cancellation** - A coroutine that is canceled while suspended in the *consumer requests queue* is removed from the queue and resumed with `CancellationException`, unless it was marked to be resumed by another coroutine, and as such, it will still dequeue the message, but will keep the `CancellationException` in its context.
+- **Cancellation** - A coroutine that is canceled while suspended in the *consumer requests queue* is removed from the queue and resumed with `CancellationException`, if its request was not completed yet, otherwise, it will resume with the message that was dequeued, but the `CancellationException` will be kept in its context.
+
+
+- **Additional Notes** - The following notes apply to both queue operations:
+    - the coroutine that alters the state of the queue is responsible for resuming the coroutine that placed the correspondent operation request (_Delegation style_) last in the queue (_FIFO_).
+    - since no continuation method can be called inside a lock - because other continuations might be waiting for this continuation to resume and could hold the lock indefinitely - a resume flag was used to mark the coroutine as `resumable` in order to be resumed outside of the lock.
+    - a **race** was found between retrieving the message from the queue
+      and executing the continuation of the consumer coroutine that made the request.
+      Between these two operations, the consumer coroutine might be canceled,
+      and since [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html) was used in the implementation,
+      the coroutine is immediately resumed with `CancellationException`,
+      but in this context the message was already retrived from the queue, leading to a **lost message**.
+      To solve this,
+      a `try-catch` block was used in both implementations of the queue operations
+      to catch the `CancellationException` and decide whether to return normally or to throw the exception,
+      depending on whether the message was already retrieved from the queue.
 
 ### Asynchronous Socket Extension Functions
 TODO("talk about the way coroutines allow the writing of asynchronous code as if it were sequential")
