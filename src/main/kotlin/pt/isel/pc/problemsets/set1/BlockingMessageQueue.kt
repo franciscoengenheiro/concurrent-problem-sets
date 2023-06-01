@@ -1,7 +1,6 @@
 package pt.isel.pc.problemsets.set1
 
 import pt.isel.pc.problemsets.util.NodeLinkedList
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
@@ -10,7 +9,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Similar to a [ArrayBlockingQueue], this synchronizer supports the communication between multiple threads
+ * Similar to a [LinkedBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/LinkedBlockingQueue.html), this synchronizer supports the communication between multiple threads
  * or processes, using the Kernel or Delegation of execution synchronization style. An internal queue is used to store
  * messages that are inserted by *producer threads* and extracted by *consumer threads*.
  * This queue orders elements in FIFO (*first-in-first-out*) order to avoid *thread starvation*.

@@ -3,17 +3,13 @@ package pt.isel.pc.problemsets.set3
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.LinkedList
+import java.util.*
 import java.util.concurrent.CancellationException
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -35,12 +31,14 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
 
     private val lock: Lock = ReentrantLock()
 
+    // Represents a producer coroutine request
     private class ProducerRequest<T>(
         val message: T,
         val continuation: CancellableContinuation<Unit>,
         var canResume: Boolean = false
     )
 
+    // Represents a consumer coroutine request
     private class ConsumerRequest<T>(
         val continuation: CancellableContinuation<T>,
         var message: T? = null,
@@ -48,7 +46,6 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     )
 
     // Queues
-    // TODO("use non thread-safe queues, if possible use NodeLinkedList<T>")
     private val producerQueue = LinkedList<ProducerRequest<T>>()
     private val consumerQueue = LinkedList<ConsumerRequest<T>>()
     private val messageQueue = LinkedList<T>()
@@ -85,7 +82,7 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
         // the continuation in the producer requests queue and suspend the coroutine until it can resume
         lateinit var producerRequest: ProducerRequest<T>
         try {
-            suspendCancellableCoroutine<Unit> { continuation ->
+            return suspendCancellableCoroutine { continuation ->
                 producerRequest = ProducerRequest(message, continuation)
                 producerQueue.add(producerRequest)
                 lock.unlock()

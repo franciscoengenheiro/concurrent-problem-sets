@@ -66,6 +66,7 @@ class ConnectedClient(
             socket.getOutputStream().bufferedWriter().use { writer ->
                 writer.writeLine(Messages.CLIENT_WELCOME)
                 while (true) {
+                    // Blocks the thread executing this loop when trying to dequeue a message from the queue
                     when (val control = controlQueue.poll(Long.MAX_VALUE, TimeUnit.SECONDS)) {
                         is ControlMessage.Shutdown -> {
                             logger.info("[{}] received control message: {}", name, control)
@@ -147,6 +148,7 @@ class ConnectedClient(
         socket.getInputStream().bufferedReader().use { reader ->
             try {
                 while (true) {
+                    // Blocks the thread executing this loop when trying to read bytes from the socket
                     val line: String? = reader.readLine()
                     if (line == null) {
                         logger.info("[{}] end of input stream reached", name)

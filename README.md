@@ -17,14 +17,16 @@
   - [ThreadSafeCountedHolder](#threadsafecountedholder)
   - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
 - [Set-3](#set-3)
-  - [Base implementation Design](#base-implementation-design)
+  - [Base implementation design](#base-implementation-design)
   - [Functionality](#functionality)
   - [Requirements](#requirements)
   - [Solution](#solution)
     - [AsyncMessageQueue](#asyncmessagequeue)
     - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
-- [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
-- [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
+- [Knowledge Base](#knowledge-base)
+  - [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
+  - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
+  - [Direct Style vs Continuation Passing Style](#direct-style-vs-continuation-passing-style)
 
 ## Set-1
 ## NAryExchanger
@@ -55,20 +57,23 @@ In the following image, an example can be seen of such iteraction between the ex
 |                   *NAryExchanger example*                    |
 
 ### Style of synchronization: 
-- For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
+For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which 
 represents a group in this context.
-- A delegation of execution was used, because it's easier for the thread that completes the group to signal all the other threads of that group, that such condition is now true, thus completing their request, and as such, the other threads in the group aren't 
-required to alter the state of the `Exchanger` or their own state when they return from *await* (as they would in `Monitor Style`).
-- Also, the `Kernel-style` allows for the exchanger to keep creating new groups without keeping track of the previous ones, as the threads of each group keep a local reference to their respective request object.
-- The described `Request` is defined as follows:
 
-    ```kotlin
-    private class Request<T>(
-        val condition: Condition,
-        val values: MutableList<T> = mutableListOf(),
-        var isGroupCompleted: Boolean = false
-    )
-    ```
+A delegation of execution was used, because it's easier for the thread that completes the group to signal all the other threads of that group, that such condition is now true, thus completing their request, and as such, the other threads in the group aren't 
+required to alter the state of the `Exchanger` or their own state when they return from *await* (as they would in `Monitor Style`).
+
+Also, the `Kernel-style` allows for the exchanger to keep creating new groups without keeping track of the previous ones, as the threads of each group keep a local reference to their respective request object.
+
+The described `Request` is defined as follows:
+
+```kotlin
+private class Request<T>(
+    val condition: Condition,
+    val values: MutableList<T> = mutableListOf(),
+    var isGroupCompleted: Boolean = false
+)
+```
 
 ### Normal execution:
 - A thread calls `exchange` and awaits, within a timeout duration, for `groupSize` threads to call `exchange` as well.
@@ -90,7 +95,7 @@ required to alter the state of the `Exchanger` or their own state when they retu
 
 ### Description
 This synchronizer is a blocking queue,
-similar to an [ArrayBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ArrayBlockingQueue.html)
+similar to an [LinkedBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/LinkedBlockingQueue.html)
 that allows for multiple threads to concurrently enqueue and dequeue messages.
 It also allows for each thread to specify a willing-to-wait timeout for the enqueue and dequeue operations to complete.
 
@@ -99,9 +104,9 @@ and as such, if a thread tries to enqueue a message when the queue is full,
 or tries to dequeue a message when the queue is empty,
 it will block until the queue is not full or not empty, respectively.
 
-This type of synchronizer is useful when dealing in scenarios with multiple producers and consumer threads that want to exhange messages,
-and as such, it is important to ensure that those messages are enqueued and dequeued in the order of arrival,
-because of that the queue was implemented using FIFO (*First In First Out*) ordering.
+This type of synchronizer is useful when dealing in scenarios with multiple producers and consumer threads that want 
+to exchange messages, and as such, it is important to ensure that those messages are enqueued and dequeued in the order
+of arrival, because of that the queue was implemented using FIFO (*First In First Out*) ordering.
 
 ### Public interface:
 ```kotlin
@@ -120,7 +125,7 @@ In the following image, an example can be seen of the iteraction between the blo
 |                       *BlockingMessageQueue example*                        |
 
 ### Style of synchronization:
-- For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, 
+For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`, 
 which one representing a different condition:
   - `ProducerRequest` - represents a *Producer Thread* request to enqueue a message.
   
@@ -141,14 +146,17 @@ which one representing a different condition:
         var canDequeue: Boolean = false
     )
     ```
-- The delegation is used in the sense where the *Consumer thread* that dequeues the messages is the one that signals all *Producer
+  
+The delegation is used in the sense where the *Consumer thread* that dequeues the messages is the one that signals all *Producer
 threads*, that were waiting to enqueue a message, and completes their request if it can be completed, because it altered the 
 state of the synchronizer and because of that it might have created conditions that allow other threads to complete their requests. 
 This process works in both ways, where a *Producer thread* should complete all *Consumer thread requests* if they can be completed.
-- Since each thread submits a request to its respective queue, *specific signalling* is used here where the threads can signal 
+
+Since each thread submits a request to its respective queue, *specific signalling* is used here where the threads can signal 
 each other instead of a single condition, which is more efficient because it reduces the number of threads that are woken up 
 when a condition is met only to find their request is not the one that was completed.
-- In this context, there's also a special case where if a *Consumer Thread* gives up, either by timeout or interruption, not
+
+In this context, there's also a special case where if a *Consumer Thread* gives up, either by timeout or interruption, not
 only it should remove its request from the *consumer requests queue*,
   but also it should signal all *Consumer Threads*, that were waiting to dequeue a set of messages, and complete their request if it can be completed.
 
@@ -158,7 +166,7 @@ The following image tries to illustrate an example of the described special dele
 |:--------------------------------------------------------------------------------------------------------------------------------:|
 |                                                  *Consumer Special delegation*                                                   |
 
-In this example, **Consumer Thread 1** is waiting to dequeue 4 messages, but the *queue* only has 3 messages available.
+In this example, **Consumer Thread 1** is waiting to dequeue **4 messages**, but the *queue* **only** has 3 messages available.
 Since no *Producer Thread* enqueued the final message to complete its request,
 within the given timeout, the thread gives up.
 
@@ -184,7 +192,7 @@ and as such, it cannot assume that the next *Producer Thread* request in the que
 - A thread calls `tryDequeue` and expects to dequeue a set of messages within the given timeout.
 
 ### Conditions of execution:
-`TryEnqueue`:
+`tryEnqueue`:
 - **Paths** - The thread can take two major paths when calling this method:
     - **fast-path** 
         - there's a consumer thread that is waiting to dequeue a single message, and as such, the thread delivers the message directly and returns `true`.
@@ -197,7 +205,7 @@ and as such, it cannot assume that the next *Producer Thread* request in the que
     - If a thread is interrupted but another thread completed this thread request to enqueue a message, it will still return `true` but will throw an `InterruptedException` if blocked again (since the interrupt flag is rearmed).
       - A thread that specifies a timeout of *zero* will not wait and will return `false` immediately if it did not enqueue the message.
 
-`TryDequeue`:
+`tryDequeue`:
 - **Paths** - The thread can take two major paths when calling this method:
     - the *message queue* has at least `nOfMessages` messages, and the thread is the head of the *consumer requests queue*, the thread dequeues the messages and returns them (***fast-path***).
     - the *message queue* has less than `nOfMessages` messages, or the thread is not the head of the *consumer requests queue*, and as such, the thread passively awaits to be able to dequeue the messages (***wait-path***).
@@ -755,7 +763,7 @@ a server, using the `coroutines` concurrency mechanism, instead of `threads` to 
 ### Base Implementation Design
 A base implementation of the entire system was provided in order to facilitate the development of the solution,
 and uses the following design:
-- Each server instance has one thread to listen for new connections and creates a client instance for each. Most of the time, this thread will be blocked waiting for a new connection.
+- Each server instance has **one thread** to listen for new connections and creates a client instance for each. Most of the time, this thread will be blocked waiting for a new connection to be accepted by the server.
 
 - Each client instance uses **two** threads:
     - a **main thread** that reads and processes control-messages from a control queue. These control messages can be:
@@ -768,13 +776,19 @@ and uses the following design:
 
 This design has two major drawbacks:
 - it uses a *threads* per connection, requiring two platform threads per connected client.
-- both client threads are blocked when reading a client message from the socket and when reading from the control message queue, respectively.
+- both client threads are blocked when reading the bytes that correspond to a client message from the socket and when 
+reading from the control message queue, respectively.
 
 A solution to these drawbacks is presented in this [section](#solution).
 
+The following image illustrates how the base implementation internally works, with the mentioned drawbacks identified. 
+
+| ![Base Implementation](src/main/resources/set3/base-imp.png) |
+|:------------------------------------------------------------:|
+|           *Base implementation of the application*           |
+
 ### Functionality
 Client systems interact with the server system by sending lines of text, which can be **commands** or **messages**.
-
 A command begins with `'/'`, followed by the command name and zero or
 more arguments, whereas a message is any line of text that does not begin with `'/'`.
 
@@ -804,13 +818,110 @@ The developed system should meet the following requirements:
 ### Solution
 In order to provide a solution to the problem, the following steps were taken:
 - A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a syncronized communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
-- Two [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions) were implemented to provide a way to read and write to a socket without blocking the calling thread, respectively.
+- In order to disallow the threads that are reading from the socket to be blocked while the socket is out of bytes,
+the implementations of the channels used in the base implmentation:
+[SocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/SocketChannel.html) and 
+[ServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/ServerSocketChannel.html) could be 
+changed to their asynchronous
+counterparts,[AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html) 
+and [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html),
+respectively.
+Although this modification could solve the presented issue, it's still necessary to provide a way
+for these socket implementations to synchronize with the coroutine ecosystem
+already in use for other application contexts, like the message queue mentioned above.
+For that reason, two [asynchronous socket extension functions](#asynchronous-socket-extension-functions) were implemented
+to provide an interface that not only takes advantage of the asynchronous implementation of the mentioned sockets,
+but also knows the coroutine system, works with it and is sensible to its effects.
 
 ### AsyncMessageQueue
-TODO()
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueue.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueueTests.kt)
+
+### Description
+This synchronizer is a queue that provides **suspendable** methods for the enqueue and dequeue operations,
+which means no thread is blocked while waiting for any operation to complete. It was designed to provide a synchronization mechanism between producer and consumer coroutines.
+
+The queue:
+- is bounded, meaning that it has a maximum capacity of elements that can be enqueued at a given time.
+- allows for each coroutine to specify a *willing-to-wait* timeout for the dequeue operation to complete.
+- is sensible to coroutine cancellation.
+
+Since in a real environment, it is important to ensure the messages are enqueued and dequeued in the order of arrival,
+the queue was implemented using FIFO (*First In First Out*) ordering.
+
+### Public interface
+```kotlin
+class AsyncMessageQueue<T>(private val capacity: Int) {
+    @Throws(CancellationException::class)
+    suspend fun enqueue(message: T): Unit
+
+    @Throws(TimeoutException::class, CancellationException::class)
+    suspend fun dequeue(timeout: Duration): T
+}
+```
+
+In the following image, an example can be seen of the iteraction between the producer and consumer coroutines
+with the queue.
+
+| ![AsynchronousMessageQueue](src/main/resources/set3/async-message-queue.png) |
+|:----------------------------------------------------------------------------:|
+|                      *AsynchronousMessageQueue example*                      |
+
+### Style of synchronization:
+For this synchronizer the `Kernel-style` or `Delegation of
+Execution` was used, since the coroutine that cannot complete its request immediately
+delegates its execution to another coroutine, which might be able to complete it later.
+Similar to the [BlockingMessageQueue](#blockingmessagequeue),
+this queue also uses the same strategy of having a request object for each of the supported operations:
+- `ProducerRequest` - represents a *Producer Coroutine* request to enqueue a message.
+
+  ```kotlin
+  private class ProducerRequest<T>(
+    val message: T,
+    val continuation: CancellableContinuation<Unit>,
+    var canResume: Boolean = false
+  )
+  ```
+  
+- `ConsumerRequest` - represents a *Consumer Coroutine* request to dequeue a message.
+
+  ```kotlin
+  private class ConsumerRequest<T>(
+    val continuation: CancellableContinuation<T>,
+    var message: T? = null,
+    var canResume: Boolean = false
+  )
+  ```
+
+Both of these request objects have the following properties:
+- a **resume flag** that is used to indicate whether the coroutine that made the request can resume its execution or not.
+- the **continuation** of the coroutine that made the request, so that it can be explicitly resumed when the request is completed or canceled.
+
+### Normal execution:
+- A coroutine calls `enqueue` and expects to enqueue a message.
+- A coroutine calls `dequeue` and expects to dequeue a message within the given timeout.
+
+### Conditions of execution:
+`enqueue`:
+- **Paths** - The coroutine can take two major paths when calling this method:
+    - **fast-path**
+        - the *message queue* is not full, and the coroutine is the head of the *producer requests queue*, and as such, the thread can enqueue the message without suspending.
+    - **resume-path** - the coroutine is not the head of the *producer requests queue*, and as such, the coroutine is suspended until it is explicitly resumed.
+- **Cancellation** - A coroutine that is canceled while suspended in the *producer requests queue* is removed from the queue and resumed with `CancellationException`, unless it was marked to be resumed by another coroutine, and as such, it will still enqueue the message, but will keep the `CancellationException` in its context.
+
+`dequeue`:
+- **Paths** - The coroutine can take two major paths when calling this method:
+    - **fast-path**
+        - the *message queue* is not empty, and the coroutine is the head of the *consumer requests queue*, and as such, the coroutine can dequeue the message without suspending.
+    - **resume-path** - the coroutine is not the head of the *consumer requests queue*, and as such, the coroutine is suspended until it is explicitly resumed.
+- **Cancellation** - A coroutine that is canceled while suspended in the *consumer requests queue* is removed from the queue and resumed with `CancellationException`, unless it was marked to be resumed by another coroutine, and as such, it will still dequeue the message, but will keep the `CancellationException` in its context.
 
 ### Asynchronous Socket Extension Functions
 TODO("talk about the way coroutines allow the writing of asynchronous code as if it were sequential")
+
+## Knowledge Base
+Provides a set of concepts and definitions that were used throughout the project for each of the problem sets resolution,
+and that were considered important to be documented for future reference.
 
 ## Monitor vs Kernel Syncronization style
 In the `Monitor` style of synchronization, the thread that creates or sees favorable conditions for other threads to advance
@@ -926,3 +1037,6 @@ object LockFreeImplementation {
     }
 }
 ```
+
+## Direct Style vs Continuation Passing Style
+- TODO()

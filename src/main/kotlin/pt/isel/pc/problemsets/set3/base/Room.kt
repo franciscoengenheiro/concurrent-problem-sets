@@ -1,6 +1,5 @@
 package pt.isel.pc.problemsets.set3.base
 
-import java.util.HashSet
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
