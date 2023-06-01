@@ -10,21 +10,18 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
-import java.nio.channels.CompletionHandler
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 class AsynchronousSocketChannelExampleTests {
 
     @Test
     fun `connect and send bytes`() {
+        // asynchronous code writting in a sequential way
         runBlocking {
             val socketChannel = AsynchronousSocketChannel.open()
-            socketChannel.connectSuspend(InetSocketAddress("127.0.0.1", 8080))
+            socketChannel.testConnectSuspend(InetSocketAddress("127.0.0.1", 8080))
             logger.info("connect completed")
             val byteBuffer = ByteBuffer.allocate(1024)
-            val readLen = socketChannel.readSuspend(byteBuffer)
+            val readLen = socketChannel.testReadSuspend(byteBuffer)
             val s = String(byteBuffer.array(), 0, readLen)
             logger.info("read completed: '{}'", s)
         }
@@ -32,46 +29,6 @@ class AsynchronousSocketChannelExampleTests {
 
     companion object {
         private val logger = LoggerFactory.getLogger(AsynchronousSocketChannelExampleTests::class.java)
-
-        suspend fun AsynchronousSocketChannel.connectSuspend(address: InetSocketAddress) {
-            suspendCoroutine<Unit> { continuation ->
-                this.connect(
-                    address,
-                    null,
-                    object : CompletionHandler<Void?, Unit?> {
-                        override fun completed(result: Void?, attachment: Unit?) {
-                            logger.info("completed called")
-                            continuation.resume(Unit)
-                        }
-
-                        override fun failed(exc: Throwable, attachment: Unit?) {
-                            logger.info("failed called")
-                            continuation.resumeWithException(exc)
-                        }
-                    }
-                )
-            }
-        }
-
-        suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
-            return suspendCoroutine { continuation ->
-                this.read(
-                    byteBuffer,
-                    null,
-                    object : CompletionHandler<Int, Unit?> {
-                        override fun completed(result: Int, attachment: Unit?) {
-                            logger.info("completed called")
-                            continuation.resume(result)
-                        }
-
-                        override fun failed(exc: Throwable, attachment: Unit?) {
-                            logger.info("failed called")
-                            continuation.resumeWithException(exc)
-                        }
-                    }
-                )
-            }
-        }
 
         @BeforeAll
         @JvmStatic
