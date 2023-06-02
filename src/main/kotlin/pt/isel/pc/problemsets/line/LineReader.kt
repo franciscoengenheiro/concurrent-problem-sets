@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.util
+package pt.isel.pc.problemsets.line
 
 import org.slf4j.LoggerFactory
 import java.nio.ByteBuffer

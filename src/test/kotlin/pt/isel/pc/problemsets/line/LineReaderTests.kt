@@ -1,7 +1,5 @@
 package pt.isel.pc.problemsets.line
 
-import pt.isel.pc.problemsets.util.LineReader
-
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory

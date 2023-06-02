@@ -1,5 +1,6 @@
-package pt.isel.pc.problemsets.util
+package pt.isel.pc.problemsets.line
 
+import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.nio.CharBuffer
 
 /**

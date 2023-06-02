@@ -2,6 +2,7 @@ package pt.isel.pc.problemsets.set3
 
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.newSingleThreadContext
@@ -13,6 +14,7 @@ import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.randomTo
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeoutException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertContains
@@ -51,40 +53,6 @@ internal class AsyncMessageQueueTests {
         }
     }
 
-    @Test
-    fun `A producer coroutine that is cancelled and not marked as resumed removes its request to enqueue a message`() {
-        val capacity = 10
-        val queue = AsyncMessageQueue<String>(capacity)
-        val messageList = List(capacity) { "$defaultMsg-$it" }
-        val cancelledMsg = "cancelledMessage"
-        runBlocking(singleThreadDispatcher) {
-            val producerJobToCancel = launch {
-                try {
-                    queue.enqueue(cancelledMsg)
-                } catch (e: CancellationException) {
-                    println("Producer coroutine was cancelled")
-                }
-            }
-            val producersJob = launch {
-                repeat(capacity) {
-                    queue.enqueue(messageList[it])
-                }
-            }
-            producersJob.join()
-            launch {
-                // TODO("where to cancel the producer coroutine?")
-                producerJobToCancel.cancel()
-                // empty the queue
-                repeat(capacity) {
-                    val message = queue.dequeue(INFINITE)
-                    // this consumer coroutine should not see the canceled message
-                    // ensuring the producer coroutine request was removed from the queue
-                    assertContains(messageList, message)
-                }
-            }
-        }
-    }
-
     @RepeatedTest(3)
     fun `Queue should let a consumer retrieve all values gave by a producer in FIFO order`() {
         val capacity = 100000 randomTo 500000
@@ -115,7 +83,7 @@ internal class AsyncMessageQueueTests {
         }
     }
 
-    // Consumer coroutine related tests:
+    // consumer coroutine related tests:
     @Test
     fun `Consumer should throw TimeoutException if timeout occurs and could not dequeue in time`() {
         val capacity = 2
@@ -140,7 +108,96 @@ internal class AsyncMessageQueueTests {
         }
     }
 
-    // Tests with concurrency stress:
+    // cancellation tests:
+    @Test
+    fun `A producer coroutine that is cancelled and not marked as resumable removes its request to enqueue a message`() {
+        val capacity = 10
+        val queue = AsyncMessageQueue<String>(capacity)
+        val messageList = List(capacity * 2) { "$defaultMsg-$it" }
+        val cancelledMsg = "cancelledMessage"
+        runBlocking(singleThreadDispatcher) {
+            val producersJob = launch {
+                // fill the queue
+                repeat(capacity) {
+                    queue.enqueue(messageList[it])
+                }
+            }
+            val producerJobToCancel = launch {
+                try {
+                    // this coroutine will be cancelled before enqueueing the message
+                    // and is currently suspended since the queue is full
+                    queue.enqueue(cancelledMsg)
+                } catch (e: CancellationException) {
+                    // nothing to do here
+                }
+            }
+            // more producers are added to the queue
+            launch {
+                // fill the queue
+                repeat(capacity) {
+                    queue.enqueue(messageList[it + capacity])
+                }
+            }
+            producersJob.join()
+            launch {
+                producerJobToCancel.cancel()
+                producerJobToCancel.join()
+                // empty the queue
+                repeat(capacity * 2) {
+                    val message = queue.dequeue(INFINITE)
+                    // this consumer coroutine should not see the canceled message
+                    // ensuring the producer coroutine request was removed from the queue
+                    assertContains(messageList, message)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `A consumer coroutine that is cancelled and not marked as resumable removes its request to dequeue a message`() {
+        val capacity = 10
+        val queue = AsyncMessageQueue<String>(capacity)
+        val messageList = List(capacity * 2) { "$defaultMsg-$it" }
+        runBlocking(singleThreadDispatcher) {
+            launch {
+                repeat(capacity) {
+                    launch {
+                        val message = queue.dequeue(INFINITE)
+                        assertContains(messageList, message)
+                    }
+                }
+            }
+            val consumerJobToCancel = launch {
+                try {
+                    // this coroutine will be cancelled before dequeueing the message
+                    // and is currently suspended since the queue is empty
+                    queue.dequeue(INFINITE)
+                } catch (e: CancellationException) {
+                    // nothing to do here
+                }
+            }
+            // more consumers are added to the queue
+            launch {
+                repeat(capacity) {
+                    launch {
+                        val message = queue.dequeue(INFINITE)
+                        assertContains(messageList, message)
+                    }
+                }
+            }
+            delay(2000) // cannot use join..
+            launch {
+                consumerJobToCancel.cancel()
+                consumerJobToCancel.join()
+                // fill the queue
+                repeat(capacity * 2) {
+                    queue.enqueue(messageList[it])
+                }
+            }
+        }
+    }
+
+    // tests with concurrency stress:
     @RepeatedTest(5)
     fun `An arbitrary number of producer and consumer coroutines should be able to exchange messages without losing any`() {
         val capacity = 750 randomTo 1500
@@ -182,14 +239,15 @@ internal class AsyncMessageQueueTests {
         assertEquals(originalMsgs.toSet(), retrievedMsgs.toSet())
     }
 
-    @RepeatedTest(3)
+    @RepeatedTest(10)
     fun `Check if an arbitrary number of consumer coroutines is timedout`() {
         val capacity = 10 randomTo 20
         val testDuration = 5.seconds
         val queue = AsyncMessageQueue<ExchangedValue>(capacity)
-        val originalMsgs = LinkedList<ExchangedValue>()
-        val exchangedMsgs = HashMap<ExchangedValue, Unit>()
-        val retrievedMsgs = LinkedList<ExchangedValue>()
+        // use thread-safe data structures since the coroutines are on a multithreaded dispatcher
+        val originalMsgs = ConcurrentLinkedQueue<ExchangedValue>()
+        val exchangedMsgs = ConcurrentHashMap<ExchangedValue, Unit>()
+        val retrievedMsgs = ConcurrentLinkedQueue<ExchangedValue>()
         val nrOfProducers = 500 randomTo 1000
         var nrOfTimedoutConsumers = 0
         runBlocking(multiThreadDispatcher) {
@@ -217,7 +275,7 @@ internal class AsyncMessageQueueTests {
                         repeat(Int.MAX_VALUE) { idx ->
                             try {
                                 val msg = if (idx % 2 == 0) queue.dequeue(2.seconds)
-                                                         else queue.dequeue(100.milliseconds)
+                                else queue.dequeue(100.milliseconds)
                                 retrievedMsgs.add(msg)
                             } catch (e: TimeoutException) {
                                 nrOfTimedoutConsumers++

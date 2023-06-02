@@ -1,7 +1,5 @@
 package pt.isel.pc.problemsets.line
 
-import pt.isel.pc.problemsets.util.LineParser
-
 import org.junit.jupiter.api.Test
 import java.nio.CharBuffer
 import kotlin.test.assertEquals

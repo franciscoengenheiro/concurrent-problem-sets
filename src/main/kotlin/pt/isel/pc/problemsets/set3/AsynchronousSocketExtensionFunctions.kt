@@ -9,6 +9,25 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
+ * Provides a suspendable version of [AsynchronousServerSocketChannel.accept] that is sensible to coroutine cancellation.
+ */
+suspend fun AsynchronousServerSocketChannel.acceptSuspend() =
+    suspendCancellableCoroutine { continuation ->
+        accept(
+            null,
+            object : CompletionHandler<AsynchronousSocketChannel, Unit?> {
+                override fun completed(result: AsynchronousSocketChannel, attachment: Unit?) {
+                    continuation.resume(result)
+                }
+
+                override fun failed(exc: Throwable, attachment: Unit?) {
+                    continuation.resumeWithException(exc)
+                }
+            }
+        )
+    }
+
+/**
  * Provides a suspendable version of [AsynchronousSocketChannel.read] that is sensible to coroutine cancellation.
  * @param byteBuffer the buffer to read into.
  */
@@ -30,14 +49,16 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int =
     }
 
 /**
- * Provides a suspendable version of [AsynchronousServerSocketChannel.accept] that is sensible to coroutine cancellation.
+ * Provides a suspendable version of [AsynchronousSocketChannel.write] that is sensible to coroutine cancellation.
+ * @param byteBuffer the buffer to write from.
  */
-suspend fun  AsynchronousServerSocketChannel.acceptSuspend() =
+suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int =
     suspendCancellableCoroutine { continuation ->
-        accept(
+        write(
+            byteBuffer,
             null,
-            object : CompletionHandler<AsynchronousSocketChannel, Unit?> {
-                override fun completed(result: AsynchronousSocketChannel, attachment: Unit?) {
+            object : CompletionHandler<Int, Unit?> {
+                override fun completed(result: Int, attachment: Unit?) {
                     continuation.resume(result)
                 }
 

@@ -819,12 +819,11 @@ The developed system should meet the following requirements:
 In order to provide a solution to the problem, the following steps were taken:
 - A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a syncronized communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
 - In order to disallow the threads that are reading from the socket to be blocked while the socket is out of bytes,
-the implementations of the channels used in the base implmentation:
-[SocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/SocketChannel.html) and 
-[ServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/ServerSocketChannel.html) could be 
+the implementations of the channels used in the base implmentation: 
+[ServerSocket](https://docs.oracle.com/javase/8/docs/api/java/net/ServerSocket.html) and [SocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/SocketChannel.html) could be 
 changed to their asynchronous
-counterparts,[AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html) 
-and [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html),
+counterparts,
+  [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) and [AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html),
 respectively.
 Although this modification could solve the presented issue, it's still necessary to provide a way
 for these socket implementations to synchronize with the coroutine ecosystem

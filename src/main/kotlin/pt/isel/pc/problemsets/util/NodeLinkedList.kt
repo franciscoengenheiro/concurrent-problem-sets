@@ -1,5 +1,10 @@
 package pt.isel.pc.problemsets.util
 
+/**
+ * Provides a basic implementation of an intrusive doubly linked non-thread safe list with essential operations
+ * for adding, accessing, and removing elements.
+ * Most notably the [remove] operation is **O(1)**.
+ */
 class NodeLinkedList<T> {
 
     interface Node<T> {
@@ -30,9 +35,17 @@ class NodeLinkedList<T> {
         head.prev = head
     }
 
+    /**
+     * The number of elements in the list.
+     */
     var count = 0
         private set
 
+    /**
+     * Adds a new element to the end of the list.
+     * @param value the value to add.
+     * @return the node that was added.
+     */
     fun enqueue(value: T): Node<T> {
         val tail: NodeImpl<T> = head.prev
         val node: NodeImpl<T> = NodeImpl(value, head, tail)
@@ -42,12 +55,21 @@ class NodeLinkedList<T> {
         return node
     }
 
+    /**
+     * Checks if the list is empty.
+     */
     val empty: Boolean
         get() = head === head.prev
 
+    /**
+     * Checks if the list is not empty.
+     */
     val notEmpty: Boolean
         get() = !empty
 
+    /**
+     * If the list is not empty, returns the value of the head node otherwise returns null.
+     */
     val headValue: T?
         get() {
             return if (notEmpty) {
@@ -57,6 +79,9 @@ class NodeLinkedList<T> {
             }
         }
 
+    /**
+     * If the list is not empty, returns the head node otherwise returns null.
+     */
     val headNode: Node<T>?
         get() {
             return if (notEmpty) {
@@ -66,10 +91,25 @@ class NodeLinkedList<T> {
             }
         }
 
+    /**
+     * Checks if the given node is the head node.
+     * @param node the node to check.
+     * @return true if the node is the head node, false otherwise.
+     */
     fun isHeadNode(node: Node<T>) = head.next === node
 
+    /**
+     * Checks if the head node satisfies the given condition.
+     * @param cond the condition to be applied to the head node.
+     * @return true if the head node satisfies the condition, false otherwise.
+     */
     inline fun headCondition(cond: (T) -> Boolean): Boolean = headValue?.let { cond(it) } == true
 
+    /**
+     * Removes the head node from the list and returns it.
+     * @return the removed node.
+     * @throws IllegalStateException if the list is empty.
+     */
     fun pull(): Node<T> {
         require(!empty) { "cannot pull from an empty list" }
         val node = head.next
@@ -79,6 +119,11 @@ class NodeLinkedList<T> {
         return node
     }
 
+    /**
+     * Removes the given node from the list.
+     * @param node the node to remove.
+     * @throws IllegalArgumentException if the node is not part of the list.
+     */
     fun remove(node: Node<T>) {
         require(node is NodeImpl<T>) { "node must be an internal node" }
         node.prev.next = node.next

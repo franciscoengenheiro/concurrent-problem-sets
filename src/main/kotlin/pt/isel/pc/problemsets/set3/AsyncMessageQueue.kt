@@ -3,6 +3,7 @@ package pt.isel.pc.problemsets.set3
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import pt.isel.pc.problemsets.util.NodeLinkedList
 import java.util.*
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeoutException
@@ -45,9 +46,9 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     )
 
     // Queues
-    private val producerQueue = LinkedList<ProducerRequest<T>>()
-    private val consumerQueue = LinkedList<ConsumerRequest<T>>()
-    private val messageQueue = LinkedList<T>()
+    private val producerQueue = NodeLinkedList<ProducerRequest<T>>()
+    private val consumerQueue = NodeLinkedList<ConsumerRequest<T>>()
+    private val messageQueue = NodeLinkedList<T>()
 
     /**
      * Enqueues a message into the queue. If the queue is **full**, the operation is suspended until there is space
@@ -60,13 +61,13 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     suspend fun enqueue(message: T): Unit {
         lock.lock()
         // fast-path: if there are no pending producer requests and there is space available, enqueue the message
-        if (producerQueue.isEmpty() && messageQueue.size <= capacity) {
-            messageQueue.add(message)
+        if (producerQueue.empty && messageQueue.count < capacity) {
+            messageQueue.enqueue(message)
             var consumerRequest: ConsumerRequest<T>? = null
             // mark a pending consumer request if there is a message available in the queue
-            if (consumerQueue.isNotEmpty() && messageQueue.isNotEmpty()) {
-                consumerRequest = consumerQueue.poll()
-                consumerRequest.message = messageQueue.poll()
+            if (consumerQueue.notEmpty && messageQueue.notEmpty) {
+                consumerRequest = consumerQueue.pull().value
+                consumerRequest.message = messageQueue.pull().value
                 consumerRequest.canResume = true
             }
             lock.unlock()
@@ -79,22 +80,24 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
         }
         // suspend-path: if there is no space available or there are pending producer requests, place
         // the continuation in the producer requests queue and suspend the coroutine until it can resume
-        lateinit var producerRequest: ProducerRequest<T>
+        var producerRequestNode: NodeLinkedList.Node<ProducerRequest<T>>? = null
         try {
             return suspendCancellableCoroutine { continuation ->
-                producerRequest = ProducerRequest(message, continuation)
-                producerQueue.add(producerRequest)
+                val producerRequest = ProducerRequest(message, continuation)
+                producerRequestNode = producerQueue.enqueue(producerRequest)
                 lock.unlock()
             }
         } catch (ex: CancellationException) {
             lock.withLock {
-                val observedRequest = producerRequest
-                if (observedRequest.canResume) {
-                    return
-                } else {
-                    producerQueue.remove(observedRequest)
-                    throw ex
+                val observedRequestNode = producerRequestNode
+                if (observedRequestNode != null) {
+                    if (observedRequestNode.value.canResume) {
+                        return
+                    } else {
+                        producerQueue.remove(observedRequestNode)
+                    }
                 }
+                throw ex
             }
         }
     }
@@ -114,14 +117,14 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
         lock.lock()
         // fast-path A: if there are no pending consumer requests and there is at least a
         // message available, dequeue the message
-        if (consumerQueue.isEmpty() && messageQueue.isNotEmpty()) {
-            val message: T = messageQueue.poll()
+        if (consumerQueue.empty && messageQueue.notEmpty) {
+            val message: T = messageQueue.pull().value
             // mark a pending producer request if there is space available in the queue
             var producerRequest: ProducerRequest<T>? = null
-            if (producerQueue.isNotEmpty() && messageQueue.size <= capacity) {
-                producerRequest = producerQueue.poll()
+            if (producerQueue.notEmpty && messageQueue.count <= capacity) {
+                producerRequest = producerQueue.pull().value
                 producerRequest.let {
-                    messageQueue.add(it.message)
+                    messageQueue.enqueue(it.message)
                     it.canResume = true
                 }
             }
@@ -134,44 +137,47 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
             lock.unlock()
             throw TimeoutException()
         }
-        lateinit var consumerRequest: ConsumerRequest<T>
-        try {
+        var consumerRequestNode: NodeLinkedList.Node<ConsumerRequest<T>>? = null
+        return try {
             // the request could be completed even though the timeout was reached
-            return withTimeoutOrNull(timeout) {
+            withTimeoutOrNull(timeout) {
                 suspendCancellableCoroutine { continuation ->
                     // suspend-path: if there is no message available or there are pending consumer requests, place
                     // the continuation in the consumer requests queue and suspend the coroutine until it can resume
-                    consumerRequest = ConsumerRequest(continuation)
-                    consumerQueue.add(consumerRequest)
+                    val consumerRequest: ConsumerRequest<T> = ConsumerRequest(continuation)
+                    consumerRequestNode = consumerQueue.enqueue(consumerRequest)
                     lock.unlock()
                 }
-            } ?: messageOrException(consumerRequest, TimeoutException())
+            } ?: messageOrException(consumerRequestNode, TimeoutException())
         } catch (ex: CancellationException) {
-            lock.withLock {
-                return messageOrException(consumerRequest, ex)
-            }
+            messageOrException(consumerRequestNode, ex)
         }
     }
 
     /**
-     * Observes a consumer request and makes a decision based on the state of the request, to either return
+     * Observes a consumer request and makes a decision based on the state of that request, to either return
      * the message or throw an exception.
-     * @param observedConsumerRequest the consumer request to observe.
-     * @param exceptionToThrow the exception to throw if the consumer request cannot resume.
+     * If the consumer request node wasn't initialized (start value is null), it means that the consumer request
+     * wasn't even placed in the consumer queue, so the exception is thrown.
+     * @param observedConsumerRequestNode the node of the consumer request to observe.
+     * @param exceptionToThrow the exception to throw if the consumer request cannot resume successfully.
      */
     private fun messageOrException(
-        observedConsumerRequest: ConsumerRequest<T>,
+        observedConsumerRequestNode: NodeLinkedList.Node<ConsumerRequest<T>>?,
         exceptionToThrow: Exception
     ): T & Any {
         lock.withLock {
-            if (observedConsumerRequest.canResume) {
-                val message: T? = observedConsumerRequest.message
-                requireNotNull(message) { "message of a resumed consumer request cannot be null" }
-                return message
-            } else {
-                consumerQueue.remove(observedConsumerRequest)
-                throw exceptionToThrow
+            if (observedConsumerRequestNode != null) {
+                val consumerRequest = observedConsumerRequestNode.value
+                if (consumerRequest.canResume) {
+                    val message: T? = consumerRequest.message
+                    requireNotNull(message) { "message of a resumed consumer request cannot be null" }
+                    return message
+                } else {
+                    consumerQueue.remove(observedConsumerRequestNode)
+                }
             }
+            throw exceptionToThrow
         }
     }
 }
