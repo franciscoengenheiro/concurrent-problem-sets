@@ -1,6 +1,5 @@
 package pt.isel.pc.problemsets.line
 
-import org.slf4j.LoggerFactory
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CoderResult
@@ -49,9 +48,5 @@ class LineReader(
             lineParser.offer(charBuffer)
             charBuffer.clear()
         }
-    }
-
-    companion object {
-        private val logger = LoggerFactory.getLogger(LineReader::class.java)
     }
 }

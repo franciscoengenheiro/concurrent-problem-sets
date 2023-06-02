@@ -907,9 +907,8 @@ Both of these request objects have the following properties:
 ### Conditions of execution:
 `enqueue`:
 - **Paths** - The coroutine can take two major paths when calling this method:
-    - **fast-path**
-        - the *message queue* is not full, and the coroutine is the head of the *producer requests queue*, and as such, the thread can enqueue the message without suspending.
-    - **resume-path** - the coroutine is not the head of the *producer requests queue*, and as such, the coroutine is suspended until it is explicitly resumed.
+    - the *message queue* is not full, and the coroutine is the head of the *producer requests queue*, and as such, the thread can enqueue the message without suspending (**fast-path**).
+    - the coroutine is not the head of the *producer requests queue*, and as such, the coroutine is suspended until it is explicitly resumed (**resume-path**).
 - **Cancellation** - A coroutine that is canceled while suspended in the *producer requests queue* is removed from the queue and resumed with `CancellationException`, unless it was marked to be resumed by another coroutine, and as such, it will still enqueue the message, but will keep the `CancellationException` in its context.
 
 `dequeue`:
@@ -925,8 +924,7 @@ Both of these request objects have the following properties:
     - since no continuation method can be called inside a lock - because other continuations might be waiting for this continuation to resume and could hold the lock indefinitely - a resume flag was used to mark the coroutine as `resumable` in order to be resumed outside the lock.
     - found **racing conditions**:
         - between retrieving the message from the queue
-        and executing the continuation of the consumer coroutine that made the request.
-        Between these two operations, the consumer coroutine might be canceled,
+        and executing the continuation of the consumer coroutine that made the request, the consumer coroutine might be canceled,
         and since [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html) was used in the implementation,
         the coroutine is immediately resumed with `CancellationException`,
         but in this context the message was already retrived from the queue, leading to a **lost message**.

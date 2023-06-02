@@ -17,7 +17,7 @@ class LineParser {
     // The previous char, if it is a terminator
     private var lastTerminator: Char? = null
 
-    // Provide a sequence of chars to th parser
+    // Provide a sequence of chars to the parser
     fun offer(chars: CharBuffer) {
         while (chars.position() != chars.limit()) {
             offer(chars.get())
