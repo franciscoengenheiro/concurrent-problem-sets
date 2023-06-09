@@ -5,28 +5,218 @@
 - Student: `49428 - Francisco Engenheiro - LEIC41D`
 
 ## Table of Contents
-- [Set-1](#set-1)
-  - [NAryExchanger](#naryexchanger)
-  - [BlockinMessageQueue](#blockingmessagequeue)
-  - [ThreadPoolExecutor](#threadpoolexecutor)
-  - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
-    - [Promise](#promise)
-- [Set-2](#set-2)
-  - [CyclicBarrier](#cyclicBarrier)
-  - [ThreadSafeContainer](#threadsafecontainer)
-  - [ThreadSafeCountedHolder](#threadsafecountedholder)
-  - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
-- [Set-3](#set-3)
-  - [Base implementation design](#base-implementation-design)
-  - [Functionality](#functionality)
-  - [Requirements](#requirements)
-  - [Solution](#solution)
-    - [AsyncMessageQueue](#asyncmessagequeue)
-    - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
-- [Knowledge Base](#knowledge-base)
-  - [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
-  - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
-  - [Direct Style vs Continuation Passing Style](#direct-style-vs-continuation-passing-style)
+1. [Background Concepts and Definitions](#background-concepts-and-definitions)
+   - [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
+   - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
+   - [Direct Style vs Continuation Passing Style](#direct-style-vs-continuation-passing-style)
+   - [Coroutines and Sequential Asynchronous Programming](#coroutines-and-sequential-asynchronous-programming)
+2. [Set-1](#set-1)
+   - [NAryExchanger](#naryexchanger)
+   - [BlockinMessageQueue](#blockingmessagequeue)
+   - [ThreadPoolExecutor](#threadpoolexecutor)
+   - [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture)
+     - [Promise](#promise)
+3. [Set-2](#set-2)
+   - [CyclicBarrier](#cyclicBarrier)
+   - [ThreadSafeContainer](#threadsafecontainer)
+   - [ThreadSafeCountedHolder](#threadsafecountedholder)
+   - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
+4. [Set-3](#set-3)
+   - [Base implementation design](#base-implementation-design)
+   - [Functionality](#functionality)
+     - [Base Functionality](#base-functionality)
+     - [Additional Functionality](#additional-functionality)
+   - [Requirements](#requirements)
+   - [Solution](#solution)
+     - [AsyncMessageQueue](#asyncmessagequeue)
+     - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
+
+## Background Concepts and Definitions
+This section presents a collection of concepts and definitions
+that were utilized throughout the project to address the problem sets.
+While the resolution of the problem sets incorporated additional concepts and definitions,
+the ones listed below have been documented as their understanding was crucial
+and formed the foundation for solving them.
+
+### Monitor vs Kernel Syncronization style
+In the `Monitor` style of synchronization, the thread that creates or sees favorable conditions for other threads to advance
+to the next state signals those threads.
+It is the responsibility of those other threads to complete their own request of sorts after they exit the condition
+where they were waiting upon.
+
+In the `Kernel` or `Delegation of execution` synchronization style,
+the thread that creates or sees favorable conditions for other threads to advance to the next state is responsible
+for completing the requests of those other threads.
+In successful cases,
+the threads in the dormant state that were signaled do not have
+to do anything besides confirming that their request was completed and return immediately from the synchronizer.
+This style of synchronization is usually associated with one or more requests
+that a thread or threads want to see completed,
+and they delegate that completion to another thread, while keeping a local reference to that request, which then enables
+the synchronizer to resume its functions without waiting for said requests to be completed.
+
+For general purpose, the kernel-style is the preferred one,
+since it is more flexible and easier to implement, but the choice will always be dependent
+on the context of the synchronization problem.
+
+### Lock-based vs Lock-free algorithms
+The lock-based algorithms use a `lock` to ensure that only one thread can access the shared state at a given time.
+
+#### Intrinsic vs Explicit locks
+- synchronized blocks (*intrinsic lock*)
+    ```kotlin
+    synchronized(lock) {
+       // code to be synchronized
+    }
+    ```
+- synchronized methods (*intrinsic lock*)
+    ```kotlin
+    @Synchronized 
+    fun method() {
+        // code to be synchronized
+    }
+    ```
+- ReetrantLock (*explicit lock*)
+    ```kotlin
+    // Or any other Lock interface implementation
+    val lock: Lock = ReentrantLock()
+    fun method() = lock.withLock {
+        // code to be synchronized
+    }
+    ```
+Meanwhile, the lock-free algorithms are based on atomic operations that ensure that multiple threads can access shared state concurrently without interfering with each other.
+This allows for efficient concurrent access without the overhead and potential contention of locking mechanisms.
+Most algorithms use atomic variables and retry loops to achieve this.
+
+#### Volatile vs Atomic
+When a variable is marked as `volatile`, any *write* to that variable is immediately visible to all other threads,
+and any *read* of that variable is guaranteed to see the most recent write
+(*[happens-before relation](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)*).
+The guarantee of visibility is only for the variable itself,
+not for the state of the object it refers to or any other variables.
+This is guaranteed by the [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html),
+which is then implemented by the `Java Virtual Machine`.
+
+```kotlin
+@Volatile var sharedState: Any = Any()
+```
+
+[Atomic](https://docs.oracle.com/javase/8/docs/api/index.html?java/util/concurrent/atomic/package-summary.html) variables
+are implicitly *volatile* and guarantee atomicity of operations on them.
+
+Some examples of atomic variables are `AtomicInteger`, `AtomicBoolean` and `AtomicReference`.
+These variables have special methods for atomic operations, like `compare-and-set` which guarantee that their state will always
+be consistent and synchronized between threads.
+
+```kotlin
+val sharedState: AtomicReference<Any> = AtomicReference(Any())
+```
+
+| ![Volatile-vs-Atomic](src/main/resources/set2/volatile-vs-atomic.png) |
+|:---------------------------------------------------------------------:|
+|                         *Volatile vs Atomic*                          | 
+
+#### Implementation examples
+An example of a lock-based and a lock-free implementation of a business logic
+that updates a shared state can be seen in the following code snippets:
+
+```kotlin
+object LockBasedImplementation {
+    val lock: Lock = ReentrantLock()
+    var sharedState: Any = Any()
+    fun updateState() = lock.withLock {
+        logic(sharedState)
+    }
+}
+```
+
+```kotlin
+object LockFreeImplementation {
+    val sharedState: AtomicReference<Any> = AtomicReference(Any())
+    fun updateState() {
+        while (true) {
+            val observedState = sharedState.get()
+            val nextState = if (condition) {
+                logic(observedState)
+            } else {
+                failureLogic()
+            }
+            // applies the next state to the shared state if the observed 
+            // value corresponds to the value present in the shared state
+            if (sharedState.compareAndSet(observedState, nextState)) {
+                successLogic()
+                return // or any other exit condition of the retry loop when done
+            }
+            // retry
+        }
+    }
+}
+```
+
+### Direct Style vs Continuation Passing Style
+- TODO()
+
+### Coroutines and Sequential Asynchronous Programming
+Coroutines are a concurrency design pattern that allows the execution of code in a non-blocking manner, facilitating the handling of asynchronous operations. The utilization of coroutines enables the development of asynchronous code that appears to be sequential, providing a more intuitive and straightforward programming experience. 
+
+Traditionally, asynchronous programming often involves complex callback mechanisms or the usage of threading primitives, which can lead to convoluted and error-prone code. Coroutines offer an alternative approach that allows developers to write asynchronous code in a more linear and sequential style.
+
+With coroutines, you can write code that looks similar to synchronous code, with explicit flow control using constructs like loops, conditionals, and function calls. This sequential appearance is achieved through the use of suspending functions, which can pause their execution and resume later without blocking the underlying thread.
+
+Coroutines rely on concepts like suspending functions and the concept of await, which allows for the suspension of a coroutine until a specific asynchronous operation completes. This way, you can express complex asynchronous workflows in a more readable and structured manner.
+
+By using coroutines, callback hell can be avoided and improve code readability, making asynchronous code more maintainable and easier to reason about. Coroutines also provide additional benefits like structured error handling and support for cancellation, which further enhance the development of robust asynchronous code.
+
+Below is an example of using callbacks to execute two HTTP requests only if the previous one was successful, and the same example using coroutines.
+```kotlin
+fun method() {
+    val url = "https://someurl.com"
+    val client = OkHttpClient()
+    val request = Request.Builder().url(url).build()
+    client.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            println("Failed to execute request")
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val body = response.body?.string()
+            println(body)
+
+            // Nested callback
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    println("Failed to execute nested request")
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    val nestedBody = response.body?.string()
+                    println(nestedBody)
+                    // more callbacks
+                }
+            })
+        }
+    })
+}
+```
+
+Same example with coroutines:
+```kotlin
+suspend fun method() {
+    val url = "https://someurl.com"
+    val client = OkHttpClient()
+    val request = Request.Builder().url(url).build()
+    
+    // Sequential execution
+    val response = client.newCall(request).await()
+    val body = response.body?.string()
+    println(body)
+
+    // Sequential execution
+    val nestedResponse = client.newCall(request).await()
+    val nestedBody = nestedResponse.body?.string()
+    println(nestedBody)
+}
+```
 
 ## Set-1
 ## NAryExchanger
@@ -758,7 +948,8 @@ stage completes, and in that handler a few paths can be associated:
 ## Set-3
 In this set,
 the main goal is to implement a server system with a `TCP/IP` interface for exchanging messages between clients and
-a server, using the `coroutines` concurrency mechanism, instead of `threads` to handle each client connection.
+a server, using the `coroutines` concurrency mechanism,
+instead of `threads` to handle each client's connection, in order to improve the scalability and performance of the system.
 
 ### Base Implementation Design
 A base implementation of the entire system was provided in order to facilitate the development of the solution,
@@ -775,19 +966,22 @@ and uses the following design:
 - Most interactions with the client are done by sending messages to the client control queue.
 
 This design has two major drawbacks:
-- it uses a *threads* per connection, requiring two platform threads per connected client.
-- both client threads are blocked when reading the bytes that correspond to a client message from the socket and when 
+- the server thread is blocked when waiting for a new connection to be accepted.
+- it uses a *threads* per connection, requiring two platform threads per connected client. Both client threads are blocked when
+reading the bytes that correspond to a client message from the socket and when
 reading from the control message queue, respectively.
 
 A solution to these drawbacks is presented in this [section](#solution).
 
-The following image illustrates how the base implementation internally works, with the mentioned drawbacks identified. 
+The following image illustrates how the base implementation internally works with the intention of visually representing
+the drawbacks of the design:
 
 | ![Base Implementation](src/main/resources/set3/base-imp.png) |
 |:------------------------------------------------------------:|
 |           *Base implementation of the application*           |
 
 ### Functionality
+#### Base Functionality
 Client systems interact with the server system by sending lines of text, which can be **commands** or **messages**.
 A command begins with `'/'`, followed by the command name and zero or
 more arguments, whereas a message is any line of text that does not begin with `'/'`.
@@ -803,6 +997,7 @@ The commands a client system can send over a `TCP/IP` connection are:
 - `/leave` - leave the room it is in.
 - `/exit` - terminates the connection to the server.
 
+#### Additional Functionality
 The system must also accept the following commands sent locally via standard input:
 - `/shutdown timeout` - starts the server shutdown process, no longer accepting connections but
 waiting for all connections to terminate within the given timeout seconds. All clients should receive a message notifying
@@ -820,9 +1015,9 @@ In order to provide a solution to the problem, the following steps were taken:
 - A [AsyncMessageQueue](#asyncmessagequeue) class was implemented to provide a syncronized communication mechanism between coroutines, since the previous, [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html) class used in the base implementation of the `control queue`, does not provide **coroutine synchronization**.
 - In order to disallow the threads that are reading from the socket to be blocked while the socket is out of bytes,
 the implementations of the channels used in the base implmentation: 
-[ServerSocket](https://docs.oracle.com/javase/8/docs/api/java/net/ServerSocket.html) and [SocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/SocketChannel.html) could be 
+[ServerSocket](https://docs.oracle.com/javase/8/docs/api/java/net/ServerSocket.html) and [Socket](https://docs.oracle.com/javase/8/docs/api/java/net/Socket.html) could be 
 changed to their asynchronous
-counterparts,
+counterparts from the **NIO2** package,
   [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) and [AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html),
 respectively.
 Although this modification could solve the presented issue, it's still necessary to provide a way
@@ -831,6 +1026,12 @@ already in use for other application contexts, like the message queue mentioned 
 For that reason, two [asynchronous socket extension functions](#asynchronous-socket-extension-functions) were implemented
 to provide an interface that not only takes advantage of the asynchronous implementation of the mentioned sockets,
 but also knows the coroutine system, works with it and is sensible to its effects.
+
+The following image illustrates how the solution was implemented, with the mentioned modifications identified.
+
+| ![Solution Implementation](src/main/resources/set3/solution-imp.png) |
+|:--------------------------------------------------------------------:|
+|                          *Solution preview*                          |
 
 ### AsyncMessageQueue
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueue.kt) |
@@ -841,9 +1042,9 @@ This synchronizer is a queue that provides **suspendable** methods for the enque
 which means no thread is blocked while waiting for any operation to complete. It was designed to provide a synchronization mechanism between producer and consumer coroutines.
 
 The queue:
-- is bounded, meaning that it has a maximum capacity of elements that can be enqueued at a given time.
-- allows for each coroutine to specify a *willing-to-wait* timeout for the dequeue operation to complete.
-- is sensible to coroutine cancellation.
+- **is bounded**, meaning that it has a maximum capacity of elements that can be enqueued at a given time.
+- allows for each coroutine to specify a *willing-to-wait* **timeout** for the dequeue operation to complete.
+- is sensible to **coroutine cancellation**.
 
 Since in a real environment, it is important to ensure the messages are enqueued and dequeued in the order of arrival,
 the queue was implemented using FIFO (*First In First Out*) ordering.
@@ -864,7 +1065,7 @@ with the queue.
 The diagram assumes this order of events:
 - The **producer 4** coroutine enqueues a message.
 - The **producer 5** coroutine suspends its execution, because the queue was full.
-- The **consumer 1** coroutine dequeues a message and resumes the producer 5 coroutine request to enqueue a message.
+- The **consumer 1** coroutine dequeues a message and resumes the **producer 5** coroutine request to enqueue a message.
 
 | ![AsynchronousMessageQueue](src/main/resources/set3/async-message-queue.png) |
 |:----------------------------------------------------------------------------:|
@@ -932,129 +1133,36 @@ Both of these request objects have the following properties:
         a `try-catch` block was used in both implementations of the queue operations
         to catch the `CancellationException` and decide whether to return normally or to throw the exception,
         depending on whether the message was already retrieved from the queue.
-        - since the `dequeue` operation is using the [withTimeoutOrNull](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-timeout-or-null.html) suspension block, a consumer coroutine request could completed but not return within the timeout, which could lead to the same problem as mentioned above. In order to solve it, the same approach was used as in the previous case.
+        - since the `dequeue` operation is using the [withTimeoutOrNull](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-timeout-or-null.html) suspension block, a consumer coroutine request could complete but not return within the timeout, which could lead to the same problem as mentioned above. In order to solve it, the same approach was used as in the previous case, but if the request wasn't completed yet, the `TimeoutException` is thrown instead of the `CancellationException`.
 
 ### Asynchronous Socket Extension Functions
-TODO("talk about the way coroutines allow the writing of asynchronous code as if it were sequential")
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/AsyncSocketChannelExtensions.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncSocketChannelExtensionsTests.kt)
 
-## Knowledge Base
-Provides a set of concepts and definitions that were used throughout the project for each of the problem sets resolution,
-and that were considered important to be documented for future reference.
+### Description
+These extension functions were implemented
+in order to provide a way to perform I/O operations on a socket channel without blocking the calling thread,
+which the classes [AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html) and [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) already provide,
+but are not synchronized nor operate in a coroutine context.
 
-## Monitor vs Kernel Syncronization style
-In the `Monitor` style of synchronization, the thread that creates or sees favorable conditions for other threads to advance
-to the next state signals those threads.
-It is the responsibility of those other threads to complete their own request of sorts after they exit the condition
-where they were waiting upon.
+### Implementation
+In normal conditions, the `AsynchronousSocketChannel` and `AsynchronousServerSocketChannel` classes provide a way to perform I/O operations without blocking the calling thread, but instead use callbacks to notify the caller when the operation is completed. 
+The callback is an object that implements the [CompletionHandler](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/CompletionHandler.html) interface, which has two methods:
+- `completed` - called when the operation is completed successfully.
+- `failed` - called when the operation is completed with an error.
 
-In the `Kernel` or `Delegation of execution` synchronization style,
-the thread that creates or sees favorable conditions for other threads to advance to the next state is responsible
-for completing the requests of those other threads.
-In successful cases,
-the threads in the dormant state that were signaled do not have
-to do anything besides confirming that their request was completed and return immediately from the synchronizer.
-This style of synchronization is usually associated with one or more requests
-that a thread or threads want to see completed,
-and they delegate that completion to another thread, while keeping a local reference to that request, which then enables
-the synchronizer to resume its functions without waiting for said requests to be completed. 
+Since we are using coroutines, the extension functions were wrapped in a [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html) block
+which is sensitive to cancellation,
+so that the coroutine can be suspended until the asynchronous operation is completed,
+and then explicitly resumed, inside the callback, with its result or with the exception that eventually occurred. 
 
-For general purpose, the kernel-style is the preferred one, 
-since it is more flexible and easier to implement, but the choice will always be dependent
-on the context of the synchronization problem.
-
-## Lock-based vs Lock-free algorithms
-The lock-based algorithms use a `lock` to ensure that only one thread can access the shared state at a given time.
-
-### Intrinsic vs Explicit locks
-- synchronized blocks (*intrinsic lock*)
-    ```kotlin
-    synchronized(lock) {
-       // code to be synchronized
-    }
-    ```
-- synchronized methods (*intrinsic lock*)
-    ```kotlin
-    @Synchronized 
-    fun method() {
-        // code to be synchronized
-    }
-    ```
-- ReetrantLock (*explicit lock*)
-    ```kotlin
-    // Or any other Lock interface implementation
-    val lock: Lock = ReentrantLock()
-    fun method() = lock.withLock {
-        // code to be synchronized
-    }
-    ```
-Meanwhile, the lock-free algorithms are based on atomic operations that ensure that multiple threads can access shared state concurrently without interfering with each other. 
-This allows for efficient concurrent access without the overhead and potential contention of locking mechanisms.
-Most algorithms use atomic variables and retry loops to achieve this.
-
-### Volatile vs Atomic
-When a variable is marked as `volatile`, any *write* to that variable is immediately visible to all other threads,
-and any *read* of that variable is guaranteed to see the most recent write
-(*[happens-before relation](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)*).
-The guarantee of visibility is only for the variable itself,
-not for the state of the object it refers to or any other variables.
-This is guaranteed by the [Java Memory model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html),
-which is then implemented by the `Java Virtual Machine`.
-
+### Public interface
 ```kotlin
-@Volatile var sharedState: Any = Any()
+@Throws(CancellationException::class)
+suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketChannel
+
+@Throws(CancellationException::class)
+suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int
+
+@Throws(CancellationException::class)
+suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int
 ```
-
-[Atomic](https://docs.oracle.com/javase/8/docs/api/index.html?java/util/concurrent/atomic/package-summary.html) variables 
-are implicitly *volatile* and guarantee atomicity of operations on them.
-
-Some examples of atomic variables are `AtomicInteger`, `AtomicBoolean` and `AtomicReference`.
-These variables have special methods for atomic operations, like `compare-and-set` which guarantee that their state will always
-be consistent and synchronized between threads.
-
-```kotlin
-val sharedState: AtomicReference<Any> = AtomicReference(Any())
-```
-
-| ![Volatile-vs-Atomic](src/main/resources/set2/volatile-vs-atomic.png) |
-|:---------------------------------------------------------------------:|
-|                         *Volatile vs Atomic*                          | 
-
-### Implementations
-An example of a lock-based and a lock-free implementation of a business logic
-that updates a shared state can be seen in the following code snippets:
-
-```kotlin
-object LockBasedImplementation {
-    val lock: Lock = ReentrantLock()
-    var sharedState: Any = Any()
-    fun updateState() = lock.withLock {
-        logic(sharedState)
-    }
-}
-```
-
-```kotlin
-object LockFreeImplementation {
-    val sharedState: AtomicReference<Any> = AtomicReference(Any())
-    fun updateState() {
-        while (true) {
-            val observedState = sharedState.get()
-            val nextState = if (condition) {
-                logic(observedState)
-            } else {
-                failureLogic()
-            }
-            // applies the next state to the shared state if the observed 
-            // value corresponds to the value present in the shared state
-            if (sharedState.compareAndSet(observedState, nextState)) {
-                successLogic()
-                return // or any other exit condition of the retry loop when done
-            }
-            // retry
-        }
-    }
-}
-```
-
-## Direct Style vs Continuation Passing Style
-- TODO()
