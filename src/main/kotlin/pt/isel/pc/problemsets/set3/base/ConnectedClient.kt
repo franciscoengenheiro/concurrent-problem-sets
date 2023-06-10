@@ -1,17 +1,16 @@
 package pt.isel.pc.problemsets.set3.base
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.line.LineReader
-import pt.isel.pc.problemsets.set3.readSuspend
-import pt.isel.pc.problemsets.set3.writeSuspend
+import pt.isel.pc.problemsets.set3.solution.AsyncMessageQueue
+import pt.isel.pc.problemsets.set3.solution.readSuspend
+import pt.isel.pc.problemsets.set3.solution.writeSuspend
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
+import kotlin.time.Duration
 
 /**
  * Responsible for handling a single-connected client. It is comprised by two threads:
@@ -25,15 +24,16 @@ class ConnectedClient(
     id: Int,
     private val roomContainer: RoomContainer,
     private val clientContainer: ConnectedClientContainer,
-    private val serverScope: CoroutineScope
+    coroutineScope: CoroutineScope
 ) {
 
-    private val name = "client-$id"
-    // TODO("change to AsyncMessageQueue here later")
-    private val controlQueue = LinkedBlockingQueue<ControlMessage>()
-    // TODO("this threads should be removed later")
-    private val readLoopThread = thread(isDaemon = true) { readLoop() }
-    private val mainLoopThread = thread(isDaemon = true) { mainLoop() }
+    private val name: String = "client-$id"
+    private val controlQueue: AsyncMessageQueue<ControlMessage> = AsyncMessageQueue(100)
+    private var readLoopCoroutine: Job? = null
+    private val mainLoopCoroutine: Job = coroutineScope.launch {
+        launch { mainLoop() }
+        readLoopCoroutine = launch { readLoop() }
+    }
     private var room: Room? = null
 
     // The control messages the main loop handles...
@@ -55,58 +55,57 @@ class ConnectedClient(
         }
     }
 
-    fun send(sender: ConnectedClient, message: String) {
+    suspend fun send(sender: ConnectedClient, message: String) {
         // just add a control message into the control queue
-        controlQueue.put(ControlMessage.RoomMessage(sender, message))
+        controlQueue.enqueue(ControlMessage.RoomMessage(sender, message))
     }
 
-    fun shutdown() {
+    suspend fun shutdown() {
         // just add a control message into the control queue
-        controlQueue.put(ControlMessage.Shutdown)
+        controlQueue.enqueue(ControlMessage.Shutdown)
     }
 
-    fun join() = mainLoopThread.join()
+    suspend fun join() = mainLoopCoroutine.join()
 
-    private fun mainLoop() {
+    private suspend fun mainLoop() {
         logger.info("[{}] main loop started", name)
         asyncSocketChannel.use {
-            serverScope.launch {
-                try {
-                    it.writeSuspend(toByteBuffer(Messages.CLIENT_WELCOME))
-                    while (true) {
-                        // Blocks the thread executing this loop when trying to dequeue a message from the queue
-                        when (val control = controlQueue.poll(Long.MAX_VALUE, TimeUnit.SECONDS)) {
-                            is ControlMessage.Shutdown -> {
-                                logger.info("[{}] received control message: {}", name, control)
-                                it.writeSuspend(toByteBuffer(Messages.SERVER_IS_ENDING))
-                                readLoopThread.interrupt()
+            try {
+                it.writeSuspend(toByteBuffer(Messages.CLIENT_WELCOME))
+                while (true) {
+                    logger.info("[{}] waiting for message in control queue", name)
+                    // Blocks the thread executing this loop when trying to dequeue a message from the queue
+                    when (val control = controlQueue.dequeue(Duration.INFINITE)) {
+                        is ControlMessage.Shutdown -> {
+                            logger.info("[{}] received control message: {}", name, control)
+                            it.writeSuspend(toByteBuffer(Messages.SERVER_IS_ENDING))
+                            readLoopCoroutine?.cancel()
+                            break
+                        }
+
+                        is ControlMessage.RoomMessage -> {
+                            logger.trace("[{}] received control message: {}", name, control)
+                            val message = Messages.messageFromClient(control.sender.name, control.message)
+                            it.writeSuspend(toByteBuffer(message))
+                        }
+
+                        is ControlMessage.RemoteClientRequest -> {
+                            val line = control.request
+                            if (handleRemoteClientRequest(line, it))
                                 break
-                            }
+                        }
 
-                            is ControlMessage.RoomMessage -> {
-                                logger.trace("[{}] received control message: {}", name, control)
-                                val message = Messages.messageFromClient(control.sender.name, control.message)
-                                it.writeSuspend(toByteBuffer(message))
-                            }
-
-                            is ControlMessage.RemoteClientRequest -> {
-                                val line = control.request
-                                if (handleRemoteClientRequest(line, it))
-                                    break
-                            }
-
-                            ControlMessage.RemoteInputClosed -> {
-                                logger.info("[{}] received control message: {}", name, control)
-                                break
-                            }
+                        ControlMessage.RemoteInputClosed -> {
+                            logger.info("[{}] received control message: {}", name, control)
+                            break
                         }
                     }
-                } catch (ex: Throwable) {
-                    logger.error("[{}] exception in main loop", name, ex)
                 }
+            } catch (ex: Throwable) {
+                logger.error("[{}] exception in main loop", name, ex)
             }
         }
-        readLoopThread.join()
+        readLoopCoroutine?.join()
         clientContainer.remove(this)
         logger.info("[{}] main loop ending", name)
     }
@@ -135,7 +134,7 @@ class ConnectedClient(
                 logger.info("[{}] received remote client request: {}", name, clientRequest)
                 room?.remove(this)
                 asyncSocketChannel.writeSuspend(toByteBuffer(Messages.BYE))
-                readLoopThread.interrupt()
+                readLoopCoroutine?.cancel()
                 return true
             }
 
@@ -157,28 +156,28 @@ class ConnectedClient(
         return false
     }
 
-    private fun readLoop() {
+    private suspend fun readLoop() {
         asyncSocketChannel.use {
-            // TODO("should be inside cycle?")
-            val lineReader = LineReader { byteBuffer -> it.readSuspend(byteBuffer) }
-            serverScope.launch {
-                try {
-                    while (true) {
-                        val line = lineReader.readLine()
-                        if (line == null) {
-                            logger.info("[{}] end of input stream reached", name)
-                            controlQueue.put(ControlMessage.RemoteInputClosed)
-                            cancel()
-                        } else {
-                            logger.info("[{}] received line: {}", name, line)
-                            controlQueue.put(ControlMessage.RemoteClientRequest(ClientRequest.parse(line)))
-                        }
+            try {
+                while (true) {
+                    logger.info("[{}] waiting for line from client", name)
+                    val lineReader = LineReader { byteBuffer -> it.readSuspend(byteBuffer) }
+                    val line = lineReader.readLine()
+                    if (line == null) {
+                        logger.info("[{}] end of input stream reached", name)
+                        controlQueue.enqueue(ControlMessage.RemoteInputClosed)
+                        logger.info("canceling read loop coroutine.")
+                        readLoopCoroutine?.cancel()
+                    } else {
+                        logger.info("[{}] received line: {}", name, line)
+                        controlQueue.enqueue(ControlMessage.RemoteClientRequest(ClientRequest.parse(line)))
                     }
-                } catch (ex: Throwable) {
-                    logger.info("[{}] Exception on read loop: {}, {}", name, ex.javaClass.name, ex.message)
-                    controlQueue.put(ControlMessage.RemoteInputClosed)
-                    cancel()
                 }
+            } catch (ex: Throwable) {
+                logger.info("[{}] Exception on read loop: {}, {}", name, ex.javaClass.name, ex.message)
+                controlQueue.enqueue(ControlMessage.RemoteInputClosed)
+                logger.info("canceling read loop coroutine.")
+                readLoopCoroutine?.cancel()
             }
             logger.info("[{}] client loop ending", name)
         }

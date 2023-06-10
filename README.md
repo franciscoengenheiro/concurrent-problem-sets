@@ -5,10 +5,10 @@
 - Student: `49428 - Francisco Engenheiro - LEIC41D`
 
 ## Table of Contents
-1. [Background Concepts and Definitions](#background-concepts-and-definitions)
+1. [Background concepts and definitions](#background-concepts-and-definitions)
    - [Monitor vs Kernel Syncronization style](#monitor-vs-kernel-syncronization-style)
    - [Lock-based vs Lock-free algorithms](#lock-based-vs-lock-free-algorithms)
-   - [Direct Style vs Continuation Passing Style](#direct-style-vs-continuation-passing-style)
+   - [Direct Style vs Continuation Passing style](#direct-style-vs-continuation-passing-style)
    - [Coroutines and Sequential Asynchronous Programming](#coroutines-and-sequential-asynchronous-programming)
 2. [Set-1](#set-1)
    - [NAryExchanger](#naryexchanger)
@@ -1023,7 +1023,7 @@ respectively.
 Although this modification could solve the presented issue, it's still necessary to provide a way
 for these socket implementations to synchronize with the coroutine ecosystem
 already in use for other application contexts, like the message queue mentioned above.
-For that reason, two [asynchronous socket extension functions](#asynchronous-socket-extension-functions) were implemented
+For that reason, three [asynchronous socket extension functions](#asynchronous-socket-extension-functions) were implemented
 to provide an interface that not only takes advantage of the asynchronous implementation of the mentioned sockets,
 but also knows the coroutine system, works with it and is sensible to its effects.
 
@@ -1034,8 +1034,8 @@ The following image illustrates how the solution was implemented, with the menti
 |                          *Solution preview*                          |
 
 ### AsyncMessageQueue
-[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueue.kt) |
-[Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueueTests.kt)
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncMessageQueue.kt) |
+[Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncMessageQueueTests.kt)
 
 ### Description
 This synchronizer is a queue that provides **suspendable** methods for the enqueue and dequeue operations,
@@ -1136,7 +1136,7 @@ Both of these request objects have the following properties:
         - since the `dequeue` operation is using the [withTimeoutOrNull](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-timeout-or-null.html) suspension block, a consumer coroutine request could complete but not return within the timeout, which could lead to the same problem as mentioned above. In order to solve it, the same approach was used as in the previous case, but if the request wasn't completed yet, the `TimeoutException` is thrown instead of the `CancellationException`.
 
 ### Asynchronous Socket Extension Functions
-[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/AsyncSocketChannelExtensions.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncSocketChannelExtensionsTests.kt)
+[Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncSocketChannelExtensions.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncSocketChannelExtensionsTests.kt)
 
 ### Description
 These extension functions were implemented
@@ -1151,8 +1151,8 @@ The callback is an object that implements the [CompletionHandler](https://docs.o
 - `failed` - called when the operation is completed with an error.
 
 Since we are using coroutines, the extension functions were wrapped in a [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html) block
-which is sensitive to cancellation,
-so that the coroutine can be suspended until the asynchronous operation is completed,
+which is sensitive to coroutine cancellation,
+so that the coroutine can be suspended until the asynchronous I/O operation is completed,
 and then explicitly resumed, inside the callback, with its result or with the exception that eventually occurred. 
 
 ### Public interface

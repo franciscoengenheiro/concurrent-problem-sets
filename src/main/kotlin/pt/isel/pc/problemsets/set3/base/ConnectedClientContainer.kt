@@ -21,7 +21,7 @@ class ConnectedClientContainer {
         clients.remove(connectedClient)
     }
 
-    fun shutdown() {
+    suspend fun shutdown() {
         val clientList = lock.withLock {
             isShuttingDown = true
             clients.toList()

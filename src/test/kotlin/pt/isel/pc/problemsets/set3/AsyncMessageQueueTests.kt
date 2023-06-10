@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
+import pt.isel.pc.problemsets.set3.solution.AsyncMessageQueue
 import pt.isel.pc.problemsets.utils.ExchangedValue
 import pt.isel.pc.problemsets.utils.randomTo
 import java.util.*

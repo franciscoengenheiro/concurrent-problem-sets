@@ -1,7 +1,7 @@
 package pt.isel.pc.problemsets.set3.base
 
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Represents a room, namely by containing all the clients in the room
@@ -10,18 +10,18 @@ class Room(
     private val name: String,
 ) {
 
-    private val lock = ReentrantLock()
+    private val mutex: Mutex = Mutex()
     private val connectedClients = HashSet<ConnectedClient>()
 
-    fun add(connectedClient: ConnectedClient) = lock.withLock {
+    suspend fun add(connectedClient: ConnectedClient) = mutex.withLock {
         connectedClients.add(connectedClient)
     }
 
-    fun remove(connectedClient: ConnectedClient) = lock.withLock {
+    suspend fun remove(connectedClient: ConnectedClient) = mutex.withLock {
         connectedClients.remove(connectedClient)
     }
 
-    fun post(sender: ConnectedClient, message: String) = lock.withLock {
+    suspend fun post(sender: ConnectedClient, message: String) = mutex.withLock {
         connectedClients.forEach {
             if (it != sender) {
                 it.send(sender, message)
