@@ -55,15 +55,17 @@ suspend fun readCommands(server: Server) {
         // Handle the received command
         when(val command = AppCommand.parse(line)) {
             is AppCommand.ShutdownCommand -> {
+                logger.info("received command: {}", command)
                 server.shutdown(command.timeout)
                 break
             }
             AppCommand.ExitCommand -> {
+                logger.info("received command: {}", command)
                 server.exit()
                 break
             }
             is AppCommand.UnknownCommand -> {
-                println(command.gibberish)
+                logger.info("received command: {}", command)
             }
         }
     }

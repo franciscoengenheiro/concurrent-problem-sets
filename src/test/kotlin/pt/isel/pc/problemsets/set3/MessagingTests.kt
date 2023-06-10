@@ -21,9 +21,7 @@ class MessagingTests {
         val clients = List(nOfClients) {
             TestClient("client-$it")
         }
-        Server("0.0.0.0", 8080).use { server ->
-            // and: a server listening
-            server.waitUntilListening()
+        Server("localhost", 8080).use { server ->
 
             clients.forEach {
                 // when: a client connects and requests to enter a room
@@ -77,9 +75,6 @@ class MessagingTests {
         val testHelper = MultiThreadTestHelper(120.seconds)
         val counter = ConcurrentHashMap<String, AtomicLong>()
         Server("0.0.0.0", 8080).use { server ->
-            // and: a listening server
-            server.waitUntilListening()
-
             // when: all clients connect and enter the same room
             clients.forEach {
                 it.connect()

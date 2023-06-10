@@ -71,20 +71,22 @@ class Server(
         logger.info("server listening on {}:{}", listeningAddress, listeningPort)
         asyncServerSocketChannel.use {
             logger.info("accepting connections")
-            acceptLoop(asyncServerSocketChannel)
+            // SupervisorScope is used to avoid the listener coroutine to be canceled when a client
+            // fails to connect, disconnect or any other exception is thrown.
+            supervisorScope {
+                acceptLoop(asyncServerSocketChannel, this)
+            }
         }
     }
 
-    private suspend fun acceptLoop(asyncServerSocket: AsynchronousServerSocketChannel) {
+    private suspend fun acceptLoop(asyncServerSocket: AsynchronousServerSocketChannel, coroutineScope: CoroutineScope) {
         var clientId = 0
         val roomContainer = RoomContainer()
         val clientContainer = ConnectedClientContainer()
         while(true) {
             logger.info("accepting new client")
             val asyncSocketChannel = asyncServerSocket.acceptSuspend()
-            // SupervisorScope is used to avoid the listener coroutine to be canceled when a client
-            // fails to connect, disconnect or any other exception is thrown.
-            supervisorScope {
+            coroutineScope.launch {
                 println(Messages.SERVER_ACCEPTED_CLIENT)
                 logger.info("client socket accepted, remote address is {}", asyncSocketChannel.remoteAddress)
                 val client = ConnectedClient(

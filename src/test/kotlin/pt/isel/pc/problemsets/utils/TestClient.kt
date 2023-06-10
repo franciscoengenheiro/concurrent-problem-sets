@@ -18,7 +18,7 @@ class TestClient(val name: String) {
     }
 
     fun connect() {
-        socket.connect(InetSocketAddress("127.0.0.1", 8080))
+        socket.connect(InetSocketAddress("localhost", 8080))
         reader = socket.getInputStream().bufferedReader()
         writer = socket.getOutputStream().bufferedWriter()
         assertEquals(Messages.CLIENT_WELCOME, receive())

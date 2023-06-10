@@ -71,14 +71,15 @@ class ConnectedClient(
         logger.info("[{}] main loop started", name)
         asyncSocketChannel.use {
             try {
-                it.writeSuspend(toByteBuffer(Messages.CLIENT_WELCOME))
+                it.writeLine(Messages.CLIENT_WELCOME)
+                it.writeLine(Messages.AVAILABLE_COMMANDS)
                 while (true) {
                     logger.info("[{}] waiting for message in control queue", name)
                     // Blocks the thread executing this loop when trying to dequeue a message from the queue
                     when (val control = controlQueue.dequeue(Duration.INFINITE)) {
                         is ControlMessage.Shutdown -> {
                             logger.info("[{}] received control message: {}", name, control)
-                            it.writeSuspend(toByteBuffer(Messages.SERVER_IS_ENDING))
+                            it.writeLine(Messages.SERVER_IS_ENDING)
                             readLoopCoroutine?.cancel()
                             break
                         }
@@ -86,7 +87,7 @@ class ConnectedClient(
                         is ControlMessage.RoomMessage -> {
                             logger.trace("[{}] received control message: {}", name, control)
                             val message = Messages.messageFromClient(control.sender.name, control.message)
-                            it.writeSuspend(toByteBuffer(message))
+                            it.writeLine(message)
                         }
 
                         is ControlMessage.RemoteClientRequest -> {
@@ -100,6 +101,7 @@ class ConnectedClient(
                             break
                         }
                     }
+                    it.writeLine(Messages.lineTerminator)
                 }
             } catch (ex: Throwable) {
                 logger.error("[{}] exception in main loop", name, ex)
@@ -112,7 +114,7 @@ class ConnectedClient(
 
     private suspend fun handleRemoteClientRequest(
         clientRequest: ClientRequest,
-        asyncSocketChannel: AsynchronousSocketChannel,
+        socketChannel: AsynchronousSocketChannel,
     ): Boolean {
         when (clientRequest) {
             is ClientRequest.EnterRoomCommand -> {
@@ -121,7 +123,7 @@ class ConnectedClient(
                 room = roomContainer.getByName(clientRequest.name).also {
                     it.add(this)
                 }
-                asyncSocketChannel.writeSuspend(toByteBuffer(Messages.enteredRoom(clientRequest.name)))
+                socketChannel.writeLine(Messages.enteredRoom(clientRequest.name))
             }
 
             ClientRequest.LeaveRoomCommand -> {
@@ -133,14 +135,14 @@ class ConnectedClient(
             ClientRequest.ExitCommand -> {
                 logger.info("[{}] received remote client request: {}", name, clientRequest)
                 room?.remove(this)
-                asyncSocketChannel.writeSuspend(toByteBuffer(Messages.BYE))
+                socketChannel.writeLine(Messages.BYE)
                 readLoopCoroutine?.cancel()
                 return true
             }
 
             is ClientRequest.InvalidRequest -> {
                 logger.info("[{}] received remote client request: {}", name, clientRequest)
-                asyncSocketChannel.writeSuspend(toByteBuffer(Messages.ERR_INVALID_LINE))
+                socketChannel.writeLine(Messages.ERR_INVALID_LINE)
             }
 
             is ClientRequest.Message -> {
@@ -149,7 +151,7 @@ class ConnectedClient(
                 if (currentRoom != null) {
                     currentRoom.post(this, clientRequest.value)
                 } else {
-                    asyncSocketChannel.writeSuspend(toByteBuffer(Messages.ERR_NOT_IN_A_ROOM))
+                    socketChannel.writeLine(Messages.ERR_NOT_IN_A_ROOM)
                 }
             }
         }
@@ -186,13 +188,9 @@ class ConnectedClient(
     companion object {
         private val logger = LoggerFactory.getLogger(ConnectedClient::class.java)
 
-        private fun toByteBuffer(message: String): ByteBuffer {
-            val bytes = (message + System.lineSeparator()).toByteArray()
-            // TODO("where to flush?")
-            val buffer = ByteBuffer.wrap(bytes)
-            buffer.flip()
-            return buffer
+        suspend fun AsynchronousSocketChannel.writeLine(line: String) {
+            val byteBuffer = ByteBuffer.wrap(line.toByteArray())
+            writeSuspend(byteBuffer)
         }
-
     }
 }
