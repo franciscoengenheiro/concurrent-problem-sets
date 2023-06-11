@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.line.LineReader
 import pt.isel.pc.problemsets.set3.solution.AsyncMessageQueue
 import pt.isel.pc.problemsets.set3.solution.readSuspend
+import pt.isel.pc.problemsets.set3.solution.writeLine
 import pt.isel.pc.problemsets.set3.solution.writeSuspend
 import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
@@ -187,10 +188,5 @@ class ConnectedClient(
 
     companion object {
         private val logger = LoggerFactory.getLogger(ConnectedClient::class.java)
-
-        suspend fun AsynchronousSocketChannel.writeLine(line: String) {
-            val byteBuffer = ByteBuffer.wrap(line.toByteArray())
-            writeSuspend(byteBuffer)
-        }
     }
 }

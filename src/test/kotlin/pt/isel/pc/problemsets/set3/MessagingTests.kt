@@ -74,7 +74,7 @@ class MessagingTests {
         }
         val testHelper = MultiThreadTestHelper(120.seconds)
         val counter = ConcurrentHashMap<String, AtomicLong>()
-        Server("0.0.0.0", 8080).use { server ->
+        Server("localhost", 8080).use { server ->
             // when: all clients connect and enter the same room
             clients.forEach {
                 it.connect()
@@ -93,7 +93,7 @@ class MessagingTests {
                                 // ... and updated a shared map with an occurrence counter for each message
                                 counter.computeIfAbsent(msg) { AtomicLong() }.incrementAndGet()
 
-                                // ... when all the expected messages are receives, we end the thread
+                                // ... when all the expected messages are received, we end the thread
                                 if (++receivedMessages == (nOfClients - 1) * nOfMessages) {
                                     break
                                 }

@@ -99,3 +99,12 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int 
         throw e
     }
 }
+
+/**
+ * Allows writing a line to the socket channel.
+ * @param line the line to write.
+ */
+suspend fun AsynchronousSocketChannel.writeLine(line: String) {
+    val byteBuffer = ByteBuffer.wrap(line.toByteArray())
+    writeSuspend(byteBuffer)
+}

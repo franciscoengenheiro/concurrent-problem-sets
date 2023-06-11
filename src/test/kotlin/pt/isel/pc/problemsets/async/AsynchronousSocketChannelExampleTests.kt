@@ -29,21 +29,5 @@ class AsynchronousSocketChannelExampleTests {
 
     companion object {
         private val logger = LoggerFactory.getLogger(AsynchronousSocketChannelExampleTests::class.java)
-
-        @BeforeAll
-        @JvmStatic
-        fun checkRequirements() {
-            Assumptions.assumeTrue(
-                {
-                    try {
-                        Socket().connect(InetSocketAddress("127.0.0.1", 8080))
-                        true
-                    } catch (ex: IOException) {
-                        false
-                    }
-                },
-                "Requires listening echo server"
-            )
-        }
     }
 }

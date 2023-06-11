@@ -71,8 +71,8 @@ class Server(
         logger.info("server listening on {}:{}", listeningAddress, listeningPort)
         asyncServerSocketChannel.use {
             logger.info("accepting connections")
-            // SupervisorScope is used to avoid the listener coroutine to be canceled when a client
-            // fails to connect, disconnect or any other exception is thrown.
+            // SupervisorScope is used to avoid the listener coroutine to be canceled when a client coroutine
+            // fails or is canceled.
             supervisorScope {
                 acceptLoop(asyncServerSocketChannel, this)
             }

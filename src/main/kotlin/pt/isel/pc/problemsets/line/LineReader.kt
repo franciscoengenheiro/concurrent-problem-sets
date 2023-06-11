@@ -10,7 +10,7 @@ import java.nio.charset.CoderResult
 class LineReader(
     // The underlying read function
     bufferLength: Int = 1024,
-    private val reader: suspend (ByteBuffer) -> Int,
+    private val reader: suspend (ByteBuffer) -> Int
 ) {
     private val byteBuffer = ByteBuffer.allocate(bufferLength)
     private val charBuffer = CharBuffer.allocate(bufferLength)

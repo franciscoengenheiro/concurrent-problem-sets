@@ -6,7 +6,7 @@ import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
 class TestServer private constructor(
-    private val process: Process,
+    private val process: Process
 ) : AutoCloseable {
 
     private val stdOutQueue = LinkedBlockingQueue<String?>()

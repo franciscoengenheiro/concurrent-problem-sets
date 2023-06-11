@@ -8,7 +8,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class SuspendableCountDownLatch(
-    initialCount: Int,
+    initialCount: Int
 ) {
     private var counter = initialCount
     private val continuationList = mutableListOf<Continuation<Unit>>()
