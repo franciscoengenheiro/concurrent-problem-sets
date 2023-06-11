@@ -19,11 +19,14 @@ val ktlint: Configuration by configurations.creating
 
 dependencies {
 
+    // logging
     implementation("org.slf4j:slf4j-api:1.7.36")
+
+    // Kotlin coroutines
     implementation("org.slf4j:slf4j-simple:2.0.0-alpha7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
 
-    // Kotlin test framework
+    // JUnit test framework
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
 
@@ -48,7 +51,6 @@ val ktlintFormat by tasks.register("ktlintFormat", JavaExec::class) {
     classpath = ktlint
     mainClass.set("com.pinterest.ktlint.Main")
     jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
-    // see https://pinterest.github.io/ktlint/install/cli/#command-line-usage for more information
     args("-F", "src/**/*.kt", "**.kts", "!**/build/**")
 }
 

@@ -79,6 +79,9 @@ suspend fun readLineSuspend(): String? = withContext(Dispatchers.IO) {
         try {
             val reader = BufferedReader(InputStreamReader(System.`in`))
             val line = reader.readLine()
+            continuation.invokeOnCancellation {
+                reader.close()
+            }
             continuation.resume(line)
         } catch (e: Exception) {
             continuation.resumeWithException(e)

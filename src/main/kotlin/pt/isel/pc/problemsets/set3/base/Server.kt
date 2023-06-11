@@ -1,5 +1,6 @@
 package pt.isel.pc.problemsets.set3.base
 
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -35,8 +36,8 @@ class Server(
     private val asyncServerSocketChannel: AsynchronousServerSocketChannel = AsynchronousServerSocketChannel.open(group)
 
     fun shutdown(timeout: Long) {
-        logger.info("cancelling listening coroutine")
-        listeningCoroutine.cancel()
+        logger.info("cancelling accept coroutine")
+        acceptCoroutine.cancel()
         asyncServerSocketChannel.close()
         logger.info("shutting down the server")
         if (timeout == 0L) group.shutdownNow() else group.shutdown()
@@ -52,7 +53,7 @@ class Server(
     fun shutdown() = shutdown(Long.MAX_VALUE)
 
     fun join() = runBlocking {
-        listeningCoroutine.join()
+        acceptCoroutine.join()
     }
 
     fun exit() {
@@ -65,7 +66,7 @@ class Server(
         join()
     }
 
-    private val listeningCoroutine: Job = CoroutineScope(multiThreadDispatcher).launch {
+    private val acceptCoroutine: Job = CoroutineScope(multiThreadDispatcher).launch {
         logger.info("listening coroutine started")
         asyncServerSocketChannel.bind(InetSocketAddress(listeningAddress, listeningPort))
         logger.info("server listening on {}:{}", listeningAddress, listeningPort)
@@ -80,13 +81,18 @@ class Server(
     }
 
     private suspend fun acceptLoop(asyncServerSocket: AsynchronousServerSocketChannel, coroutineScope: CoroutineScope) {
+        // used to log exceptions that ocurred in the client coroutines and that are not propagated to the
+        // listening coroutine since it is a supervisor coroutine.
+        val exceptionHandler = CoroutineExceptionHandler { _, exception ->
+            logger.info("Unhandled exception: {}", exception.message)
+        }
         var clientId = 0
         val roomContainer = RoomContainer()
         val clientContainer = ConnectedClientContainer()
         while (true) {
             logger.info("accepting new client")
             val asyncSocketChannel = asyncServerSocket.acceptSuspend()
-            coroutineScope.launch {
+            coroutineScope.launch(exceptionHandler) {
                 println(Messages.SERVER_ACCEPTED_CLIENT)
                 logger.info("client socket accepted, remote address is {}", asyncSocketChannel.remoteAddress)
                 val client = ConnectedClient(

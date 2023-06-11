@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.async
+package pt.isel.pc.problemsets.line
 
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
