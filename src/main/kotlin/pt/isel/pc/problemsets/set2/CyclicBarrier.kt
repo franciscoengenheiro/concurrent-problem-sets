@@ -60,8 +60,9 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
     fun await(timeout: Duration): Int {
         lock.withLock {
             // fast-path(1) - the barrier was broken
-            if (barrierRequest.wasBroken)
+            if (barrierRequest.wasBroken) {
                 throw BrokenBarrierException()
+            }
             val indexOfArrival = parties - (barrierRequest.nOfThreadsWaiting + 1)
             // fast-path(2) - the thread that enters is the last thread to arrive at an unbroken barrier
             if (indexOfArrival == 0) {
@@ -112,7 +113,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                     // give-up by timeout
                     // the barrier was not broken nor opened, but this thread gave up, so the
                     // barrier must be broken by this thread
-                        breakBarrier()
+                    breakBarrier()
                     throw TimeoutException()
                 }
             }
@@ -141,8 +142,9 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
      * and a new barrier request is created.
      */
     fun reset() = lock.withLock {
-        if (barrierRequest.nOfThreadsWaiting > 0)
+        if (barrierRequest.nOfThreadsWaiting > 0) {
             breakBarrier()
+        }
         // create a new barrier request for the next barrier generation
         barrierRequest = BarrierRequest()
     }

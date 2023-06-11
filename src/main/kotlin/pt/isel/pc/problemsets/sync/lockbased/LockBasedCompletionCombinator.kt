@@ -103,5 +103,4 @@ class LockBasedCompletionCombinator : CompletionCombinator {
         }
         return futureToReturn
     }
-
 }

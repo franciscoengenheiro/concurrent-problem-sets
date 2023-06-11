@@ -83,7 +83,7 @@ class Server(
         var clientId = 0
         val roomContainer = RoomContainer()
         val clientContainer = ConnectedClientContainer()
-        while(true) {
+        while (true) {
             logger.info("accepting new client")
             val asyncSocketChannel = asyncServerSocket.acceptSuspend()
             coroutineScope.launch {
@@ -94,7 +94,7 @@ class Server(
                     id = ++clientId,
                     roomContainer = roomContainer,
                     clientContainer = clientContainer,
-                    coroutineScope = this,
+                    coroutineScope = this
                 )
                 clientContainer.add(client)
             }

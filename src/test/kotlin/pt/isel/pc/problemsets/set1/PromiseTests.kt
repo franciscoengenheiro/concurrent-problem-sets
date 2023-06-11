@@ -136,7 +136,7 @@ internal class PromiseTests {
         val expectedValues = List(nOfThreads) { resolvedValue }
         val retrievedValues: ConcurrentHashMap<Int, Int> = ConcurrentHashMap()
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, willingToWait ->
-            while(!willingToWait()) {
+            while (!willingToWait()) {
                 retrievedValues.computeIfAbsent(it) { _ -> promise.get() }
             }
         }

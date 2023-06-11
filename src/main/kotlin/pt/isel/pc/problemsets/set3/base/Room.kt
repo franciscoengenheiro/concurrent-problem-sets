@@ -7,7 +7,7 @@ import kotlinx.coroutines.sync.withLock
  * Represents a room, namely by containing all the clients in the room
  */
 class Room(
-    private val name: String,
+    private val name: String
 ) {
 
     private val mutex: Mutex = Mutex()

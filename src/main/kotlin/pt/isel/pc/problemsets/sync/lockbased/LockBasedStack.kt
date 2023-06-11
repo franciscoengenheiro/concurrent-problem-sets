@@ -8,7 +8,7 @@ class LockBasedStack<T> : Stack<T> {
 
     private class Node<T>(
         val value: T,
-        val next: Node<T>?,
+        val next: Node<T>?
     )
 
     private var head: Node<T>? = null

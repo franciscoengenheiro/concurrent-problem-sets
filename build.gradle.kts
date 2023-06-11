@@ -2,10 +2,14 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.8.21"
+    application
 }
-
 group = "pt.isel.pc"
 version = "1.0-SNAPSHOT"
+
+application {
+    mainClass.set("pt.isel.pc.problemsets.set3.base.AppKt")
+}
 
 repositories {
     mavenCentral()
@@ -38,12 +42,21 @@ tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "17"
 }
 
+val ktlintFormat by tasks.register("ktlintFormat", JavaExec::class) {
+    group = "formatting"
+    description = "Fix Kotlin code style deviations."
+    classpath = ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+    // see https://pinterest.github.io/ktlint/install/cli/#command-line-usage for more information
+    args("-F", "src/**/*.kt", "**.kts", "!**/build/**")
+}
+
 val outputDir = "${project.buildDir}/reports/ktlint/"
 val inputFiles = project.fileTree(mapOf("dir" to "src", "include" to "**/*.kt"))
 val ktlintCheck by tasks.creating(JavaExec::class) {
     inputs.files(inputFiles)
     outputs.dir(outputDir)
-
     description = "Check Kotlin code style."
     classpath = ktlint
     mainClass.set("com.pinterest.ktlint.Main")
@@ -52,4 +65,12 @@ val ktlintCheck by tasks.creating(JavaExec::class) {
 
 tasks.named("check") {
     dependsOn("ktlintCheck")
+}
+
+tasks.named("build") {
+    dependsOn("installDist")
+}
+
+tasks.named("test") {
+    dependsOn("installDist")
 }

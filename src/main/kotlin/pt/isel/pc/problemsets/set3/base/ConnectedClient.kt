@@ -8,8 +8,6 @@ import pt.isel.pc.problemsets.line.LineReader
 import pt.isel.pc.problemsets.set3.solution.AsyncMessageQueue
 import pt.isel.pc.problemsets.set3.solution.readSuspend
 import pt.isel.pc.problemsets.set3.solution.writeLine
-import pt.isel.pc.problemsets.set3.solution.writeSuspend
-import java.nio.ByteBuffer
 import java.nio.channels.AsynchronousSocketChannel
 import kotlin.time.Duration
 
@@ -93,8 +91,9 @@ class ConnectedClient(
 
                         is ControlMessage.RemoteClientRequest -> {
                             val line = control.request
-                            if (handleRemoteClientRequest(line, it))
+                            if (handleRemoteClientRequest(line, it)) {
                                 break
+                            }
                         }
 
                         ControlMessage.RemoteInputClosed -> {
@@ -115,7 +114,7 @@ class ConnectedClient(
 
     private suspend fun handleRemoteClientRequest(
         clientRequest: ClientRequest,
-        socketChannel: AsynchronousSocketChannel,
+        socketChannel: AsynchronousSocketChannel
     ): Boolean {
         when (clientRequest) {
             is ClientRequest.EnterRoomCommand -> {

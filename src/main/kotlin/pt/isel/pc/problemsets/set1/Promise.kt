@@ -114,7 +114,12 @@ class Promise<T> : Future<T> {
      * @throws InterruptedException if the current thread was interrupted while waiting.
      * @return the result of the completed task.
      */
-    @Throws(TimeoutException::class, InterruptedException::class, CancellationException::class, ExecutionException::class)
+    @Throws(
+        TimeoutException::class,
+        InterruptedException::class,
+        CancellationException::class,
+        ExecutionException::class
+    )
     override fun get(timeout: Long, unit: TimeUnit): T {
         lock.withLock {
             // fast-path: the promise was already completed
@@ -185,7 +190,9 @@ class Promise<T> : Future<T> {
      */
     @Throws(CancellationException::class, ExecutionException::class, IllegalStateException::class)
     private fun evaluateCompletedState() = when (val currentState = state) {
-        is State.Resolved -> currentState.result as T
+        is State.Resolved ->
+            @Suppress("UNCHECKED_CAST")
+            currentState.result as T
         is State.Rejected -> throw ExecutionException(currentState.throwable)
         is State.Cancelled -> throw CancellationException()
         is State.Pending -> throw IllegalStateException("Illegal state: $currentState")

@@ -53,7 +53,7 @@ suspend fun readCommands(server: Server) {
     while (true) {
         val line = readLineSuspend() ?: break
         // Handle the received command
-        when(val command = AppCommand.parse(line)) {
+        when (val command = AppCommand.parse(line)) {
             is AppCommand.ShutdownCommand -> {
                 logger.info("received command: {}", command)
                 server.shutdown(command.timeout)

@@ -212,7 +212,7 @@ internal class BlockingMessageQueueTests {
 
     // Tests with concurrency stress:
     @RepeatedTest(5)
-    fun `An arbitrary number of producer and consumer threads should be able to exchange messages without losing any`() {
+    fun `An arbitrary number of producer and consumer threads should be able to exchange`() {
         val capacity = 20
         val queue = BlockingMessageQueue<ExchangedValue>(capacity)
         val nOfThreads = 24
@@ -230,9 +230,11 @@ internal class BlockingMessageQueueTests {
                 originalMsgs.add(value)
                 val couldEnqueue = queue.tryEnqueue(value, Duration.ZERO)
                 if (couldEnqueue) {
-                    if (exchangedMsgs.putIfAbsent(value, Unit) != null)
+                    if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
                         throw AssertionError(
-                            "The value $value has already been exchanged by another producer thread")
+                            "The value $value has already been exchanged by another producer thread"
+                        )
+                    }
                 } else {
                     // The message was not delivered to the queue because the timeout expired, and this is
                     // the only cause for this to happen, as no producer thread was interrupted in this test
@@ -242,8 +244,10 @@ internal class BlockingMessageQueueTests {
         }
         testHelper.createAndStartMultipleThreads(nOfThreads) { _, isTestFinished ->
             while (!isTestFinished()) {
-                val result= queue.tryDequeue(
-                    1 randomTo capacity, (100 randomTo 500).milliseconds)
+                val result = queue.tryDequeue(
+                    1 randomTo capacity,
+                    (100 randomTo 500).milliseconds
+                )
                 if (result != null) retrievedMsgs.addAll(result)
             }
         }
@@ -282,8 +286,11 @@ internal class BlockingMessageQueueTests {
             while (!isTestFinished() && repetionId < 100) {
                 val value = ExchangedValue(threadId, repetionId++)
                 originalMsgs.add(value)
-                val couldEnqueue = if (threadId % 2 == 0) queue.tryEnqueue(value, Duration.ZERO)
-                                           else queue.tryEnqueue(value, producerTimeout)
+                val couldEnqueue = if (threadId % 2 == 0) {
+                    queue.tryEnqueue(value, Duration.ZERO)
+                } else {
+                    queue.tryEnqueue(value, producerTimeout)
+                }
                 if (couldEnqueue) {
                     if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
                         throw AssertionError(
@@ -342,9 +349,11 @@ internal class BlockingMessageQueueTests {
                 if (couldEnqueue) {
                     val previousRepetion = exchangedMsgs[threadId]
                     requireNotNull(previousRepetion)
-                    if (previousRepetion >= repetionId)
+                    if (previousRepetion >= repetionId) {
                         throw AssertionError(
-                            "The value $value has already been exchanged by this producer thread")
+                            "The value $value has already been exchanged by this producer thread"
+                        )
+                    }
                     exchangedMsgs[threadId] = repetionId
                 }
             }

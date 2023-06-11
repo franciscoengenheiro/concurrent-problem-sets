@@ -130,7 +130,7 @@ internal class ThreadPoolExecutorTests {
     }
 
     @Test
-    fun `Execute should throw RejectedExecutionException if executor is in shutdown mode and a thread calls this method`() {
+    fun `Execute should throw RejectedExecutionException if executor is in shutdown mode`() {
         val executor = ThreadPoolExecutor(1, 1.seconds)
         val results: MutableList<String> = mutableListOf()
         executor.shutdown()
@@ -209,7 +209,7 @@ internal class ThreadPoolExecutorTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
+            while (!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 executor.execute {
                     results.add(task)
@@ -237,7 +237,7 @@ internal class ThreadPoolExecutorTests {
         val delegatedTasks = AtomicInteger(0)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
+            while (!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 try {
                     executor.execute {

@@ -41,7 +41,9 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
     val wasCompleted = AtomicBoolean(false)
     try {
         return suspendCancellableCoroutine { continuation ->
-            read(byteBuffer, null,
+            read(
+                byteBuffer,
+                null,
                 object : CompletionHandler<Int, Unit?> {
                     override fun completed(result: Int, attachment: Unit?) {
                         continuation.resume(result)

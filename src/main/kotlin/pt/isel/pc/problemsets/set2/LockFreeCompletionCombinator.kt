@@ -78,7 +78,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
                 }
                 if (success != null) {
                     // retry-path -> if the future was not completed, try to complete it successfully
-                    while(true) {
+                    while (true) {
                         val observedStateOnSuccess = wasCompleted.get()
                         if (observedStateOnSuccess) {
                             return@handle

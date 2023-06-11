@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 class TreiberStack<T> : Stack<T> {
 
     private class Node<T>(
-        val value: T,
+        val value: T
     ) {
         var next: Node<T>? = null
     }
@@ -65,5 +65,4 @@ class TreiberStack<T> : Stack<T> {
             // else, retry
         }
     }
-
 }

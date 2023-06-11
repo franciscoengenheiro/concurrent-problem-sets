@@ -25,7 +25,7 @@ import kotlin.time.Duration
  */
 class ThreadPoolExecutorWithFuture(
     private val maxThreadPoolSize: Int,
-    private val keepAliveTime: Duration,
+    private val keepAliveTime: Duration
 ) {
     init {
         require(maxThreadPoolSize > 0) { "maxThreadPoolSize must be a natural number" }
@@ -87,19 +87,23 @@ class ThreadPoolExecutorWithFuture(
     fun awaitTermination(timeout: Duration): Boolean {
         lock.withLock {
             // fast-path
-            if (inShutdown && nOfWorkerThreads == 0)
+            if (inShutdown && nOfWorkerThreads == 0) {
                 return true
+            }
             // the thread that called this method does not want to wait
-            if (timeout.inWholeNanoseconds == 0L)
+            if (timeout.inWholeNanoseconds == 0L) {
                 return false
+            }
             // wait-path
             var remainingNanos = timeout.inWholeNanoseconds
             while (true) {
                 remainingNanos = awaitTerminationCondition.awaitNanos(remainingNanos)
-                if (inShutdown && nOfWorkerThreads == 0)
+                if (inShutdown && nOfWorkerThreads == 0) {
                     return true
-                if (remainingNanos <= 0)
+                }
+                if (remainingNanos <= 0) {
                     return false
+                }
             }
         }
     }
@@ -120,7 +124,8 @@ class ThreadPoolExecutorWithFuture(
         val request = ExecutionRequest(workItem)
         if (inShutdown) {
             request.result.reject(
-                RejectedExecutionException("Thread pool is in shutdown mode and is not accepting new tasks"))
+                RejectedExecutionException("Thread pool is in shutdown mode and is not accepting new tasks")
+            )
         } else {
             if (nOfWaitingWorkerThreads > 0) {
                 // 1. Give the work item to a waiting worker thread that was already created
@@ -263,5 +268,4 @@ class ThreadPoolExecutorWithFuture(
             request.result.reject(ex)
         }
     }
-
 }

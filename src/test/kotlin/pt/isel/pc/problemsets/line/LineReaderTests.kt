@@ -30,7 +30,7 @@ class LineReaderTests {
 
     class TestReader(
         inputString: String,
-        private val step: Int,
+        private val step: Int
     ) {
         init {
             require(step > 0)

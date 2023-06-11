@@ -138,7 +138,7 @@ internal class ThreadPoolExecutorWithFutureTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
+            while (!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 val future = executor.execute {
                     delegatedTasks.add(task)
@@ -177,7 +177,7 @@ internal class ThreadPoolExecutorWithFutureTests {
         val testHelper = MultiThreadTestHelper(10.seconds)
         testHelper.createAndStartMultipleThreads(nOfThreads) { it, isTestFinished ->
             var repetionId = 0
-            while(!isTestFinished() && repetionId < nOfAllowedRepetions) {
+            while (!isTestFinished() && repetionId < nOfAllowedRepetions) {
                 val task = ExchangedValue(it, ++repetionId)
                 val future = executor.execute { task }
                 try {
@@ -209,5 +209,4 @@ internal class ThreadPoolExecutorWithFutureTests {
         assertTrue(intersection.isEmpty())
         assertEquals(tasksToBeExecuted.toSet(), allExecutedTasks.toSet())
     }
-
 }

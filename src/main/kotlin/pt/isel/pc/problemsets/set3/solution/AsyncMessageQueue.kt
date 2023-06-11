@@ -58,7 +58,7 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
      * @throws CancellationException if the coroutine is canceled.
      */
     @Throws(CancellationException::class)
-    suspend fun enqueue(message: T): Unit {
+    suspend fun enqueue(message: T) {
         lock.lock()
         // fast-path: if there are no pending producer requests and there is space available, enqueue the message
         if (producerQueue.empty && messageQueue.count < capacity) {

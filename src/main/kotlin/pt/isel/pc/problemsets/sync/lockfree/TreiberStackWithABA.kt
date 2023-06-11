@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 class TreiberStackWithABA<T> {
 
     class Node<T>(
-        val value: T,
+        val value: T
     ) {
         var next: Node<T>? = null
     }

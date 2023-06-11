@@ -146,5 +146,4 @@ internal class ThreadSafeCountedHolderTests {
         }
         assertNull(holder.tryStartUse())
     }
-
 }

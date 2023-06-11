@@ -119,7 +119,7 @@ internal class CompletionCombinatorTests {
         // ensure the duration of the test should be at least the duration of the
         // delayed execution of the future that completes first (which will be the
         // one with the smallest delay, in this case the first one)
-        assertTrue{ delta >= Duration.ofMillis(durationInMillis) }
+        assertTrue { delta >= Duration.ofMillis(durationInMillis) }
         assertTrue(result == 1L)
     }
 
@@ -255,5 +255,4 @@ internal class CompletionCombinatorTests {
             return cf
         }
     }
-
 }

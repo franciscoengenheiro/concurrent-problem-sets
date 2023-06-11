@@ -32,6 +32,7 @@ internal class AsyncMessageQueueTests {
     companion object {
         @OptIn(DelicateCoroutinesApi::class)
         val singleThreadDispatcher: ExecutorCoroutineDispatcher = newSingleThreadContext("single-thread dispatcher")
+
         @OptIn(DelicateCoroutinesApi::class)
         val multiThreadDispatcher = newFixedThreadPoolContext(3, "multi-thread dispatcher")
     }
@@ -111,7 +112,7 @@ internal class AsyncMessageQueueTests {
 
     // cancellation tests:
     @Test
-    fun `A producer coroutine that is cancelled and not marked as resumable removes its request to enqueue a message`() {
+    fun `A producer consumer coroutine without resumable marking removes its request`() {
         val capacity = 10
         val queue = AsyncMessageQueue<String>(capacity)
         val messageList = List(capacity * 2) { "$defaultMsg-$it" }
@@ -155,7 +156,7 @@ internal class AsyncMessageQueueTests {
     }
 
     @Test
-    fun `A consumer coroutine that is cancelled and not marked as resumable removes its request to dequeue a message`() {
+    fun `A cancelled consumer coroutine without resumable marking removes its request`() {
         val capacity = 10
         val queue = AsyncMessageQueue<String>(capacity)
         val messageList = List(capacity * 2) { "$defaultMsg-$it" }
@@ -200,7 +201,7 @@ internal class AsyncMessageQueueTests {
 
     // tests with concurrency stress:
     @RepeatedTest(5)
-    fun `An arbitrary number of producer and consumer coroutines should be able to exchange messages without losing any`() {
+    fun `An arbitrary number of producer and consumer coroutines should be able to exchange`() {
         val capacity = 750 randomTo 1500
         val queue = AsyncMessageQueue<ExchangedValue>(capacity)
         val originalMsgs = LinkedList<ExchangedValue>()
@@ -218,7 +219,8 @@ internal class AsyncMessageQueueTests {
                         queue.enqueue(value)
                         if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
                             throw AssertionError(
-                                "The value $value has already been exchanged by another producer coroutine")
+                                "The value $value has already been exchanged by another producer coroutine"
+                            )
                         }
                     }
                 }
@@ -263,7 +265,8 @@ internal class AsyncMessageQueueTests {
                             queue.enqueue(value)
                             if (exchangedMsgs.putIfAbsent(value, Unit) != null) {
                                 throw AssertionError(
-                                    "The value $value has already been exchanged by another producer coroutine")
+                                    "The value $value has already been exchanged by another producer coroutine"
+                                )
                             }
                         }
                     }
@@ -275,8 +278,11 @@ internal class AsyncMessageQueueTests {
                     launch {
                         repeat(Int.MAX_VALUE) { idx ->
                             try {
-                                val msg = if (idx % 2 == 0) queue.dequeue(2.seconds)
-                                else queue.dequeue(100.milliseconds)
+                                val msg = if (idx % 2 == 0) {
+                                    queue.dequeue(2.seconds)
+                                } else {
+                                    queue.dequeue(100.milliseconds)
+                                }
                                 retrievedMsgs.add(msg)
                             } catch (e: TimeoutException) {
                                 nrOfTimedoutConsumers++
@@ -317,10 +323,11 @@ internal class AsyncMessageQueueTests {
                             val previousRepetion = exchangedMsgs[coroutineId]
                             requireNotNull(previousRepetion)
                             // ensure that the current coroutine has not exchanged this value before
-                            if (previousRepetion >= repetionId)
+                            if (previousRepetion >= repetionId) {
                                 throw AssertionError(
                                     "The value $value has already been exchanged by this producer coroutine"
                                 )
+                            }
                             exchangedMsgs[coroutineId] = repetionId
                         }
                     }
@@ -329,7 +336,7 @@ internal class AsyncMessageQueueTests {
                     while (true) {
                         try {
                             queue.dequeue(ZERO)
-                        } catch(e: TimeoutException) {
+                        } catch (e: TimeoutException) {
                             // do nothing
                         } finally {
                             if (exchangedMsgs.values.all { it >= nrOfRepetions }) {

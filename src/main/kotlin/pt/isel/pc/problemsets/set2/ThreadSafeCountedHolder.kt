@@ -50,8 +50,9 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
     fun endUse() {
         // fast-path -> the value is already null
         val initialObservedCounter = useCounter.get()
-        if (initialObservedCounter == 0)
+        if (initialObservedCounter == 0) {
             throw IllegalStateException("The value is already closed.")
+        }
         // retry-path -> the value is not null,
         // so the thread tries to decrement the usage counter if possible
         while (true) {

@@ -95,7 +95,7 @@ internal class CyclicBarrierTests {
     }
 
     @Test
-    fun `A thread that specifies no timeout and does not complete the barrier throws TimeoutException and breaks the barrier`() {
+    fun `A timeout-free thread that does not complete the barrier throws a TimeoutException and breaks it`() {
         val barrier = CyclicBarrier(2)
         assertFalse(barrier.isBroken())
         assertFailsWith<TimeoutException> {
@@ -138,7 +138,7 @@ internal class CyclicBarrierTests {
     }
 
     @Test
-    fun `A thread is interrupted while waiting at the barrier but the barrier was already broken by another interrupted thread`() {
+    fun `A thread is interrupted while waiting at a broken barrier, broken by a thread interrupted`() {
         val barrier = CyclicBarrier(3)
         assertFalse(barrier.isBroken())
         val testHelper = MultiThreadTestHelper(30.seconds)
@@ -148,7 +148,7 @@ internal class CyclicBarrierTests {
             runCatching {
                 barrier.await()
             }.onFailure {
-                when(it) {
+                when (it) {
                     is InterruptedException -> interruptedCounter.incrementAndGet()
                     is BrokenBarrierException -> interruptedAfterBrokenCounter.incrementAndGet()
                     else -> throw AssertionError("Unexpected exception: $it")
@@ -159,7 +159,7 @@ internal class CyclicBarrierTests {
             runCatching {
                 barrier.await()
             }.onFailure {
-                when(it) {
+                when (it) {
                     is InterruptedException -> interruptedCounter.incrementAndGet()
                     is BrokenBarrierException -> interruptedAfterBrokenCounter.incrementAndGet()
                     else -> throw AssertionError("Unexpected exception: $it")

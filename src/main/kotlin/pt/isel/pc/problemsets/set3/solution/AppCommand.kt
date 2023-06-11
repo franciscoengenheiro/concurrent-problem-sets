@@ -1,6 +1,5 @@
 package pt.isel.pc.problemsets.set3.solution
 
-
 /**
  * Commands that can be sent to the application.
  */
@@ -24,7 +23,6 @@ sealed interface AppCommand {
             }
             val parts = line.split(" ")
             return when (parts[0]) {
-
                 "/shutdown" -> parseShutdown(parts)
                 "/exit" -> parseExit(parts)
                 else -> UnknownCommand("unknown command")

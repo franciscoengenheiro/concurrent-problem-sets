@@ -98,7 +98,7 @@ internal class ThreadSafeContainerTests {
         testHelper.createAndStartMultipleThreads(nOfThreads) { _, isTestFinished ->
             // Ensure all threads start consuming at the same time
             barrier.await()
-            while(!isTestFinished()) {
+            while (!isTestFinished()) {
                 val consumedValue = container.consume()
                 if (consumedValue != null) {
                     consumedCounter.incrementAndGet()

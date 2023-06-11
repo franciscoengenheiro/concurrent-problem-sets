@@ -10,7 +10,7 @@ import kotlin.concurrent.withLock
  * Worker thread are terminated if there isn't any work item available, without waiting for those work items.
  */
 class SimpleThreadPool(
-    private val maxThreads: Int,
+    private val maxThreads: Int
 ) {
     init {
         require(maxThreads > 0) { "maxThreads must be a natural number" }

@@ -133,7 +133,8 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     @Throws(InterruptedException::class, IllegalArgumentException::class)
     fun tryDequeue(nOfMessages: Int, timeout: Duration): List<T>? {
         require(nOfMessages in 1..capacity) {
-            "nOfMessages must be greater than zero and below or equal the maximum capacity" }
+            "nOfMessages must be greater than zero and below or equal the maximum capacity"
+        }
         lock.withLock {
             // fast-path -> The thread that tries to dequeue a set of messages can do it immediately because it
             // is the first thread at the head of the consumer requests queue and the message queue has enough

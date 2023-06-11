@@ -24,7 +24,7 @@ import kotlin.time.Duration
  */
 class ThreadPoolExecutor(
     private val maxThreadPoolSize: Int,
-    private val keepAliveTime: Duration,
+    private val keepAliveTime: Duration
 ) {
     init {
         require(maxThreadPoolSize > 0) { "maxThreadPoolSize must be a natural number" }
@@ -79,19 +79,23 @@ class ThreadPoolExecutor(
     fun awaitTermination(timeout: Duration): Boolean {
         lock.withLock {
             // fast-path
-            if (inShutdown && nOfWorkerThreads == 0)
+            if (inShutdown && nOfWorkerThreads == 0) {
                 return true
+            }
             // the thread that called this method does not want to wait
-            if (timeout.inWholeNanoseconds == 0L)
+            if (timeout.inWholeNanoseconds == 0L) {
                 return false
+            }
             // wait-path
             var remainingNanos = timeout.inWholeNanoseconds
             while (true) {
                 remainingNanos = awaitTerminationCondition.awaitNanos(remainingNanos)
-                if (inShutdown && nOfWorkerThreads == 0)
+                if (inShutdown && nOfWorkerThreads == 0) {
                     return true
-                if (remainingNanos <= 0)
+                }
+                if (remainingNanos <= 0) {
                     return false
+                }
             }
         }
     }

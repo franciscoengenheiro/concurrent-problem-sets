@@ -130,5 +130,4 @@ class NodeLinkedList<T> {
         node.next.prev = node.prev
         count -= 1
     }
-
 }

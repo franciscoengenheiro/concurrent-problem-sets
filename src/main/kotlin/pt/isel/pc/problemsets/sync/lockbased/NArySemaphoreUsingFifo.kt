@@ -9,7 +9,7 @@ import kotlin.time.Duration
  * Semaphore with acquisition and release of more than one unit, using monitor-style.
  */
 class NArySemaphoreUsingFifo(
-    initialUnits: Int,
+    initialUnits: Int
 ) {
     init {
         require(initialUnits > 0) { "Number of initial units must be greater than zero" }

@@ -3,7 +3,7 @@ package pt.isel.pc.problemsets.sync.lockfree
 import java.util.concurrent.atomic.AtomicInteger
 
 class ThreadSafeModuloCounter(
-    private val modulo: Int,
+    private val modulo: Int
 ) {
 
     init {
