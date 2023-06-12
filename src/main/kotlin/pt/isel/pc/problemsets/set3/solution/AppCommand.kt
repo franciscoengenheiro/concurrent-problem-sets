@@ -13,19 +13,25 @@ sealed interface AppCommand {
         override fun toString(): String = "ExitCommand"
     }
 
-    // Object representing an unknown command
+    // Command asking for the available commands
+    object AvailableCommands : AppCommand {
+        override fun toString(): String = "AvailableCommands"
+    }
+
+    // Command that is not recognized
     data class UnknownCommand(val gibberish: String) : AppCommand
 
     companion object {
         fun parse(line: String): AppCommand {
             if (!line.startsWith("/")) {
-                return UnknownCommand("unknown command")
+                return UnknownCommand("received command does not start with /")
             }
             val parts = line.split(" ")
-            return when (parts[0]) {
+            return when (parts.first()) {
                 "/shutdown" -> parseShutdown(parts)
                 "/exit" -> parseExit(parts)
-                else -> UnknownCommand("unknown command")
+                "/commands" -> parseAvalaibleCommands(parts)
+                else -> UnknownCommand(line)
             }
         }
 
@@ -45,6 +51,13 @@ sealed interface AppCommand {
                 UnknownCommand("/exit command does not have arguments")
             } else {
                 ExitCommand
+            }
+
+        private fun parseAvalaibleCommands(parts: List<String>): AppCommand =
+            if (parts.size != 1) {
+                UnknownCommand("/commands command does not have arguments")
+            } else {
+                AvailableCommands
             }
     }
 }

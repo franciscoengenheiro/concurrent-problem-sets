@@ -1280,8 +1280,9 @@ In order to provide a solution to the problem, the following steps were taken:
       propagation, the read coroutine was made a child of the main coroutine,
       so that if the read coroutine fails or is canceled, the main
       coroutine is also cancelled, and thus, the client coroutine is cancelled as well, as shown in the following image:
-    - | ![Supervisor Scope Cancellation](src/main/resources/set3/coroutine-hierarchy.png) |
-            |:---------------------------------------------------------------------------------:|
+      
+      | ![Supervisor Scope Cancellation](src/main/resources/set3/coroutine-hierarchy.png) |
+      |:---------------------------------------------------------------------------------:|
       |                 *Cancellation propagation with Supervisor Scope*                  |
 
 - In order to provide application-level commands to terminate the server gracefully and abruptly, the following
@@ -1298,6 +1299,8 @@ In order to provide a solution to the problem, the following steps were taken:
       parallel with
       the coroutine that is waiting for the server to terminate was added
       to listen for application-level commands sent via standard input and act accordingly.
+      Since `readline` is a blocking operation, a suspendable version was implemented, following the same
+      approach used in the asynchronous socket extension functions.
 - In the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class constructor, a parameter that
   represents the `number of threads` was added.
   In addition, the same parameter is used to create a
@@ -1521,6 +1524,10 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int
 
 ## Demonstration
 In order to demonstrate the implementation of the described [solution](#solution),
-a small video was recorded showing the execution of application.
+two small videos were recorded, to show both the client and server sides of the application.
 
-[![Demonstration](https://example.com/video-thumbnail.jpg)](https://example.com/video-link)
+### Client
+For the client demonstration, the [Termius](https://termius.com/) application was used to establish
+a `TCP/IP` connection to the server.
+
+### Server
