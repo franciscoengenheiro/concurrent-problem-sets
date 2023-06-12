@@ -1530,4 +1530,8 @@ two small videos were recorded, to show both the client and server sides of the 
 For the client demonstration, the [Termius](https://termius.com/) application was used to establish
 a `TCP/IP` connection to the server.
 
+https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/e8323709-ea9a-4bf0-a472-dfc1435dd99c
+
 ### Server
+    
+https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/d5e05721-3703-4276-acef-bc5b625b2cc2
