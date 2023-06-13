@@ -1570,4 +1570,7 @@ https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/10118
     
 In the server demonstration, the usage of the application-level supported [commands](#additional-functionality) can be observed.
 
-https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/de657f50-a22c-4409-ad89-4303304af33a
+https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/f2f394df-a036-40bb-944a-9a9f924ee583
+
+
+
