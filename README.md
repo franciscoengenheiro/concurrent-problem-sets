@@ -1561,12 +1561,13 @@ In order to demonstrate the implementation of the described [solution](#solution
 two small videos were recorded, to show both the client and server sides of the application.
 
 ### Client
+    
+For the client demonstration, the [Termius](https://termius.com/) application was used to establish a `TCP/IP` connection to the server. The video showcases the interaction of three clients using the application. Later, one of the clients explicitly requests to exit, while the other two are disconnected due to a termination request sent to the server.
 
-For the client demonstration, the [Termius](https://termius.com/) application was used to establish
-a `TCP/IP` connection to the server.
-
-https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/e8323709-ea9a-4bf0-a472-dfc1435dd99c
+https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/2be12b52-e29e-49f1-9cd1-72973d50e711
 
 ### Server
+    
+In the server demonstration, the usage of the application-level supported [commands](#additional-functionality) can be observed.
 
-https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/d5e05721-3703-4276-acef-bc5b625b2cc2
+https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/de657f50-a22c-4409-ad89-4303304af33a
