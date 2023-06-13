@@ -12,6 +12,7 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Provides a suspendable version of [AsynchronousServerSocketChannel.accept] that is sensible to coroutine cancellation.
+ * @returns the accepted socket channel.
  * @throws CancellationException if the coroutine is canceled while suspended.
  */
 @Throws(CancellationException::class)
@@ -60,7 +61,7 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
         if (!observedStatus) {
             // if the coroutine was canceled and the read operation was not completed, then we must close the channel
             // to avoid leaking resources.
-            close()
+            // close()
         }
         throw e
     }
@@ -72,35 +73,22 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
  * @throws CancellationException if the coroutine is canceled while suspended.
  */
 @Throws(CancellationException::class)
-suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int {
-    val wasCompleted = AtomicBoolean(false)
-    try {
-        return suspendCancellableCoroutine { continuation ->
-            write(
-                byteBuffer,
-                null,
-                object : CompletionHandler<Int, Unit?> {
-                    override fun completed(result: Int, attachment: Unit?) {
-                        continuation.resume(result)
-                        wasCompleted.set(true)
-                    }
-
-                    override fun failed(exc: Throwable, attachment: Unit?) {
-                        continuation.resumeWithException(exc)
-                    }
+suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int =
+    suspendCancellableCoroutine { continuation ->
+        write(
+            byteBuffer,
+            null,
+            object : CompletionHandler<Int, Unit?> {
+                override fun completed(result: Int, attachment: Unit?) {
+                    continuation.resume(result)
                 }
-            )
-        }
-    } catch (e: CancellationException) {
-        val observedStatus = wasCompleted.get()
-        if (!observedStatus) {
-            // if the coroutine was canceled and the write operation was not completed, then we must close the channel
-            // to avoid leaking resources.
-            close()
-        }
-        throw e
+
+                override fun failed(exc: Throwable, attachment: Unit?) {
+                    continuation.resumeWithException(exc)
+                }
+            }
+        )
     }
-}
 
 /**
  * Allows writing a line to the socket channel.

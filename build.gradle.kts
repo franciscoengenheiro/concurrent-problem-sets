@@ -19,17 +19,18 @@ val ktlint: Configuration by configurations.creating
 
 dependencies {
 
-    // logging
+    // Logging
     implementation("org.slf4j:slf4j-api:1.7.36")
+    implementation("org.slf4j:slf4j-simple:2.0.0-alpha7")
 
     // Kotlin coroutines
-    implementation("org.slf4j:slf4j-simple:2.0.0-alpha7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
 
-    // JUnit test framework
+    // Test framework
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
 
+    // Ktlint
     ktlint("com.pinterest:ktlint:0.48.2") {
         attributes {
             attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))

@@ -83,7 +83,7 @@ The lock-based algorithms use a `lock` to ensure that only one thread can access
         // code to be synchronized
     }
     ```
-- ReetrantLock (*explicit lock*)
+- ReentrantLock (*explicit lock*)
     ```kotlin
     // Or any other Lock interface implementation
     val lock: Lock = ReentrantLock()
@@ -169,7 +169,25 @@ object LockFreeImplementation {
 
 ### Direct Style vs Continuation Passing Style
 
-- TODO()
+Direct style is a programming style that closely resembles synchronous code. It allows developers to write code in a straightforward and sequential manner. With direct style, the focus is on expressing the desired sequence of operations without explicitly dealing with the asynchronous nature of the underlying operations.
+
+Continuation passing style, often abbreviated as CPS, is an alternative programming style that emphasizes explicit control flow and handling of continuations. In CPS, the flow of control is explicitly passed as a continuation to the subsequent code that should be executed after an asynchronous operation completes.
+
+In continuation passing style, coroutines are implemented by explicitly passing a continuation function to the asynchronous operation. The continuation function represents the next step of the computation and is invoked once the asynchronous operation completes. This style of programming often involves nesting or chaining of continuation functions to express the desired sequence of operations.
+
+CPS provides a fine-grained control over the flow of execution,
+allowing developers to handle complex scenarios and perform custom control flow manipulation.
+However, CPS code can become convoluted and harder to read as the number of continuations [increases](#coroutines-and-sequential-asynchronous-programming) 
+
+In *Kotlin*, [suspending functions](https://kotlinlang.org/docs/composing-suspending-functions.html) are implemented using continuation passing style. The compiler transforms the code of a suspending function into a state machine that uses continuations to represent the next step of the computation. The compiler also generates the necessary code to resume the state machine once the asynchronous operation completes.
+
+The next image provides a visual comparison between direct style and continuation passing style:
+
+| ![Direct Style vs Continuation Passing Style](src/main/resources/set3/direct-style-vs-cps.png) |
+|:----------------------------------------------------------------------------------------------:|
+|                                     *Direct Style vs CPS*                                      |
+
+Overall, both direct style and continuation passing style have their merits and use cases in coroutines and sequential asynchronous programming. Direct style offers simplicity and a natural flow of code, while continuation passing style provides explicit control over the flow of execution. The choice between these styles depends on the specific requirements of the application and the desired balance between readability and control.
 
 ### Coroutines and Sequential Asynchronous Programming
 
@@ -1279,12 +1297,27 @@ In order to provide a solution to the problem, the following steps were taken:
       coroutines. In order to take advantage of the coroutine hierarchy with default cancellation
       propagation, the read coroutine was made a child of the main coroutine,
       so that if the read coroutine fails or is canceled, the main
-      coroutine is also cancelled, and thus, the client coroutine is cancelled as well, as shown in the following image:
-      
-      | ![Supervisor Scope Cancellation](src/main/resources/set3/coroutine-hierarchy.png) |
-      |:---------------------------------------------------------------------------------:|
-      |                 *Cancellation propagation with Supervisor Scope*                  |
+      coroutine is also cancelled, and thus, the client coroutine is cancelled as well.
+    - The application coroutine hierarchy is represented in the following image:
 
+      | ![Application Coroutine Hierarchy](src/main/resources/set3/coroutine-hierarchy.png) |
+                  |:-----------------------------------------------------------------------------------:|
+      |                          *Application Coroutine Hierarchy*                          |
+  
+- Besides the base implementation, these utility classes were also provided:
+    - [LineParser](src/main/kotlin/pt/isel/pc/problemsets/line/LineParser.kt): This class receives CharBuffers and
+      provides strings that are partitioned by line breaks. It maintains
+      a StringBuilder to hold the current line being parsed and a NodeLinkedList to store the already parsed lines. The
+      class offers a poll() method to retrieve the parsed lines, and it internally handles line terminators to extract
+      complete lines.
+    - [LineReader](src/main/kotlin/pt/isel/pc/problemsets/line/LineReader.kt): This class provides a suspendable
+      readLine() interface on top of a suspend function that reads bytes.
+      It
+      uses a LineParser internally to parse the received bytes into lines. It utilizes ByteBuffer and CharBuffer for
+      efficient byte-to-character decoding using a specified character set. The class ensures that the byte buffer is
+      appropriately sized and handles underflows during decoding. The readLine() method retrieves lines from the
+      LineParser
+      and returns them as strings, or null if there are no more lines to read.
 - In order to provide application-level commands to terminate the server gracefully and abruptly, the following
   changes were made:
     - The [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class was modified to provide a
@@ -1523,15 +1556,17 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int
   if the operation wasn't completed when the coroutine was canceled.
 
 ## Demonstration
+
 In order to demonstrate the implementation of the described [solution](#solution),
 two small videos were recorded, to show both the client and server sides of the application.
 
 ### Client
+
 For the client demonstration, the [Termius](https://termius.com/) application was used to establish
 a `TCP/IP` connection to the server.
 
 https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/e8323709-ea9a-4bf0-a472-dfc1435dd99c
 
 ### Server
-    
+
 https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/d5e05721-3703-4276-acef-bc5b625b2cc2

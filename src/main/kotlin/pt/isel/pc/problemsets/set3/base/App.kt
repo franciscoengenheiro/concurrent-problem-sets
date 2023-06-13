@@ -1,6 +1,7 @@
 package pt.isel.pc.problemsets.set3.base
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -11,6 +12,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.log
 
 private val logger = LoggerFactory.getLogger("main")
 
@@ -20,7 +22,6 @@ private val logger = LoggerFactory.getLogger("main")
  */
 fun main() {
     logger.info("main started")
-    // By default, we listen on port 8080 of all interfaces
     Server("localhost", 8000).use {
         // Shutdown hook to handle SIG_TERM signals (gracious shutdown)
         Runtime.getRuntime().addShutdownHook(
@@ -33,17 +34,11 @@ fun main() {
             }
         )
         runBlocking {
-            launch {
-                logger.info("open to application commands")
-                readCommands(it)
-            }
-            launch {
-                logger.info("impatiently waiting for server to end")
-                it.join()
-                logger.info("server ending")
-            }
+            logger.info("listening to application commands")
+            readCommands(it)
         }
     }
+    logger.info("main ended")
 }
 
 /**
@@ -83,7 +78,9 @@ suspend fun readLineSuspend(): String? = withContext(Dispatchers.IO) {
             val reader = BufferedReader(InputStreamReader(System.`in`))
             val line = reader.readLine()
             continuation.invokeOnCancellation {
+                logger.info("buffered reader closed")
                 reader.close()
+                logger.info("cancelling readLine coroutine")
             }
             continuation.resume(line)
         } catch (e: Exception) {

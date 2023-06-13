@@ -1,40 +1,29 @@
 package pt.isel.pc.problemsets.utils
 
+import pt.isel.pc.problemsets.async.testConnectSuspend
+import pt.isel.pc.problemsets.line.LineReader
 import pt.isel.pc.problemsets.set3.base.Messages
-import java.io.BufferedReader
-import java.io.BufferedWriter
+import pt.isel.pc.problemsets.set3.solution.readSuspend
+import pt.isel.pc.problemsets.set3.solution.writeLine
 import java.net.InetSocketAddress
-import java.net.Socket
+import java.nio.channels.AsynchronousSocketChannel
 import kotlin.test.assertEquals
 
-class TestClient(val name: String) {
+class TestClient(private val name: String) {
 
-    private val socket = Socket()
-    private var writer: BufferedWriter? = null
-    private var reader: BufferedReader? = null
+    private val socket = AsynchronousSocketChannel.open()
 
-    init {
-        socket.soTimeout = 5_000
-    }
-
-    fun connect() {
-        socket.connect(InetSocketAddress("localhost", 8080))
-        reader = socket.getInputStream().bufferedReader()
-        writer = socket.getOutputStream().bufferedWriter()
+    suspend fun connect() {
+        socket.testConnectSuspend(InetSocketAddress("localhost", 8080))
         assertEquals(Messages.CLIENT_WELCOME, receive())
     }
 
-    fun send(msg: String) {
-        val observed = writer
-        requireNotNull(observed)
-        observed.write(msg)
-        observed.newLine()
-        observed.flush()
+    suspend fun send(msg: String) {
+        socket.writeLine(msg)
     }
 
-    fun receive(): String? {
-        val observed = reader
-        requireNotNull(observed)
-        return observed.readLine()
+    suspend fun receive(): String? {
+        val lineReader = LineReader { byteBuffer -> socket.readSuspend(byteBuffer) }
+        return lineReader.readLine()
     }
 }

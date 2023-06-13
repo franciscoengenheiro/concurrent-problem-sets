@@ -24,7 +24,7 @@ sealed interface AppCommand {
     companion object {
         fun parse(line: String): AppCommand {
             if (!line.startsWith("/")) {
-                return UnknownCommand("received command does not start with /")
+                return UnknownCommand("use /commands to see the available commands")
             }
             val parts = line.split(" ")
             return when (parts.first()) {
