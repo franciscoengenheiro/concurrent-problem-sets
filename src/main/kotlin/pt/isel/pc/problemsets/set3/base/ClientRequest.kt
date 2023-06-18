@@ -1,7 +1,7 @@
 package pt.isel.pc.problemsets.set3.base
 
 /**
- * Sealed interface to represent all possible request lines sent by the client.
+ * Represents all possible request lines sent by the client.
  */
 sealed interface ClientRequest {
 

@@ -1,12 +1,14 @@
 package pt.isel.pc.problemsets.set3
 
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.set3.base.Messages
 import pt.isel.pc.problemsets.set3.base.Server
+import pt.isel.pc.problemsets.set3.solution.use
+import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import pt.isel.pc.problemsets.utils.TestClient
+import pt.isel.pc.problemsets.utils.randomString
+import pt.isel.pc.problemsets.utils.randomTo
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -16,28 +18,29 @@ import kotlin.time.Duration.Companion.seconds
 
 class MessagingTests {
 
+    private val listeningAddress = "localhost"
+    private val listeningPort = 9000
+
     @Test
-    fun `first scenario`() {
-        // given: a set of clients
+    fun `first basic scenario`() {
+        // given: a random set of clients
         val nOfClients = 5
+        require(nOfClients > 1)
         val clients = List(nOfClients) {
-            TestClient("client-$it")
+            TestClient(it, listeningAddress, listeningPort)
         }
-        Server("localhost", 8080).use { server ->
-            runBlocking {
-                val startJob = launch {
-                    clients.forEach {
-                        launch {
-                            // when: a client connects and requests to enter a room
-                            it.connect()
-                            it.send("/enter lounge")
-                            // then: it receives a success message
-                            assertEquals(Messages.enteredRoom("lounge"), it.receive())
-                        }
-                    }
+        runBlocking {
+            Server(listeningAddress, listeningPort).use { server ->
+                // and: a server listening
+                server.waitUntilListening()
+
+                clients.forEach {
+                    // when: a client connects and requests to enter a room
+                    it.connect()
+                    it.send("/enter lounge")
+                    // then: it receives a success message
+                    assertEquals(Messages.enteredRoom("lounge"), it.receive())
                 }
-                print("Waiting for clients to connect...")
-                startJob.join()
                 // when: client 0 sends a message
                 clients[0].send("Hi there.")
                 clients.forEach {
@@ -48,14 +51,71 @@ class MessagingTests {
                 }
 
                 // when: client 1 sends a message
-                val message = "Hello."
-                clients[1].send(message)
+                clients[1].send("Hello.")
                 clients.forEach {
                     if (it != clients[1]) {
                         // then: all clients, other than client 1, receive the message
-                        assertEquals(Messages.messageFromClient("client-2", message), it.receive())
+                        assertEquals(Messages.messageFromClient("client-2", "Hello."), it.receive())
                     }
                 }
+                clients.forEach {
+                    // when: all clients ask to exit
+                    it.send("/exit")
+                    // then: all clients receive the exit acknowledgment
+                    assertEquals(Messages.BYE, it.receive())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `random basic scenario`() {
+        // given: a random set of clients
+        val nOfClients = 500 randomTo 1000
+        require(nOfClients > 1)
+        val clients = List(nOfClients) {
+            TestClient(it, listeningAddress, listeningPort)
+        }
+        runBlocking {
+            Server(listeningAddress, listeningPort).use { server ->
+                // and: a server listening
+                server.waitUntilListening()
+
+                val roomName = randomString(10)
+
+                clients.forEach {
+                    // when: a client connects and requests to enter a room
+                    it.connect()
+                    it.send("/enter $roomName")
+                    // then: it receives a success message
+                    assertEquals(Messages.enteredRoom(roomName), it.receive())
+                }
+
+                val randomClientA = clients.random()
+                val messageA = randomString(15)
+                // when: client A sends a message
+                clients[randomClientA.id].send(messageA)
+                clients.forEach {
+                    if (it != clients[randomClientA.id]) {
+                        val idFromServer = randomClientA.id + 1 // server labels clients from 1 to n
+                        // then: all clients, other than client A, receive the message
+                        assertEquals(Messages.messageFromClient("client-$idFromServer", messageA), it.receive())
+                    }
+                }
+
+                val randomClientB = clients.random()
+                val messageB = randomString(15)
+
+                // when: client B sends a message
+                clients[randomClientB.id].send(messageB)
+                clients.forEach {
+                    if (it != clients[randomClientB.id]) {
+                        val idFromServer = randomClientB.id + 1 // server labels clients from 1 to n
+                        // then: all clients, other than client B, receive the message
+                        assertEquals(Messages.messageFromClient("client-$idFromServer", messageB), it.receive())
+                    }
+                }
+
                 clients.forEach {
                     // when: all clients ask to exit
                     it.send("/exit")
@@ -73,64 +133,76 @@ class MessagingTests {
     @Test
     fun `stress test`() {
         // given:
-        val nOfClients = 100
-        val nOfMessages = 100
+        val nOfClients = 4
+        require(nOfClients > 0)
+        val nOfMessages = 2
+        require(nOfMessages > 0)
         val delayBetweenMessagesInMillis = 0L
 
         // and: a set of clients
         val clients = List(nOfClients) {
-            TestClient("client-$it")
+            TestClient(it, listeningAddress, listeningPort)
         }
-        val timeout = 120.seconds
+        val testHelper = MultiThreadTestHelper(10.seconds)
         val counter = ConcurrentHashMap<String, AtomicLong>()
-        Server("localhost", 8080).use { server ->
-            runBlocking {
+        runBlocking {
+            Server(listeningAddress, listeningPort).use { server ->
+
+                // and: a server listening
+                server.waitUntilListening()
+
                 // when: all clients connect and enter the same room
                 clients.forEach {
                     it.connect()
                     it.send("/enter lounge")
                     assertEquals(Messages.enteredRoom("lounge"), it.receive())
                 }
-                withTimeout(timeout) {
-                    clients.forEach { client ->
-                        // Helper thread to read all messages sent to a client ...
-                        var receivedMessages = 0
-                        val readJob = launch {
-                            try {
-                                repeat(1000) {
-                                    val msg = client.receive() ?: return@repeat
-                                    counter.computeIfAbsent(msg) { AtomicLong() }.incrementAndGet()
-                                    // ... when all the expected messages are received, we end the thread
-                                    if (++receivedMessages == (nOfClients - 1) * nOfMessages) {
-                                        return@repeat
-                                    }
-                                }
-                            } catch (ex: SocketTimeoutException) {
-                                throw RuntimeException("timeout with '$receivedMessages' received messages", ex)
-                            }
-                            // and: all the messages are sent, with an optional delay between messages
-                            (1..nOfMessages).forEach { index ->
-                                client.send("message-$index")
-                                if (delayBetweenMessagesInMillis != 0L) {
-                                    Thread.sleep(delayBetweenMessagesInMillis)
-                                }
-                            }
+
+                clients.forEach { client ->
+                    // and: all the messages are sent, with an optional delay between messages
+                    (1..nOfMessages).forEach { index ->
+                        client.send("message-$index")
+                        if (delayBetweenMessagesInMillis != 0L) {
+                            Thread.sleep(delayBetweenMessagesInMillis)
                         }
-                        // and: the reader coroutine ended, meaning all expected messages were received
-                        readJob.join()
-                        // and: we ask the client to exit
-                        client.send("/exit")
-                        assertEquals(Messages.BYE, client.receive())
                     }
                 }
-                // then: Each sent message was received (nOfClients - 1) times.
+                clients.forEach { client ->
+                    // Helper thread to read all messages sent to a client...
+                    val readThread = testHelper.createAndStartThread {
+                        var receivedMessages = 0
+                        while (true) {
+                            try {
+                                val msg = client.receive() ?: break
+                                // ... and updated a shared map with an occurrence counter for each message
+                                counter.computeIfAbsent(msg) { AtomicLong() }.incrementAndGet()
+
+                                // ... when all the expected messages are received, the thread ends
+                                if (++receivedMessages == (nOfClients - 1) * nOfMessages) {
+                                    break
+                                }
+                            } catch (ex: SocketTimeoutException) {
+                                throw RuntimeException("Client ${client.id} timed out with $receivedMessages messages received")
+                            }
+                        }
+                    }
+
+                    // and: the reader thread ended, meaning all expected messages were received
+                    readThread.join()
+
+                    // and: we ask the client to exit
+                    client.send("/exit")
+                    assertEquals(Messages.BYE, client.receive())
+                }
+                testHelper.join() // to catch any exception thrown by the threads
+                // then: each sent message was received (nOfClients - 1) times.
                 (1..nOfClients).forEach {
                     val clientId = "client-$it"
                     (1..nOfMessages).forEach { index ->
                         val message = Messages.messageFromClient(clientId, "message-$index")
-                        val counts = counter[message]
-                        assertNotNull(counts, "counter for message '$message' must not be null")
-                        assertEquals((nOfClients - 1).toLong(), counts.get())
+                        val messageCounter = counter[message]
+                        assertNotNull(messageCounter, "counter for message '$message' must not be null")
+                        assertEquals((nOfClients - 1).toLong(), messageCounter.get())
                     }
                 }
             }

@@ -4,7 +4,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
@@ -16,9 +15,12 @@ import java.nio.channels.AsynchronousSocketChannel
 import kotlin.time.Duration
 
 /**
- * Responsible for handling a single-connected client. It has two coroutines:
- * - the main loop coroutine, which handles the control messages
- * - the read loop coroutine, which reads lines from the remote client
+ * Responsible for handling a connected client accepted by the server, namely
+ * - handling the client requests.
+ * - reading lines from the client.
+ * - writing lines to the client.
+ *
+ * The client is identified by a unique id.
  */
 class ConnectedClient(
     private val asyncSocketChannel: AsynchronousSocketChannel,
@@ -56,19 +58,31 @@ class ConnectedClient(
         }
     }
 
+    /**
+     * Sends a message to a connected client by placing it in the control queue.
+     * @param sender the client that sent the message.
+     * @param message the message to send.
+     */
     suspend fun send(sender: ConnectedClient, message: String) {
-        // just add a control message into the control queue
         controlQueue.enqueue(ControlMessage.RoomMessage(sender, message))
     }
 
+    /**
+     * Gracefully shuts down the client coroutines by ending the main loop.
+     */
     suspend fun shutdown() {
         logger.info("[{}] received shutdown request by the server", name)
-        // just add a control message into the control queue
         controlQueue.enqueue(ControlMessage.Shutdown)
     }
 
+    /**
+     * Synchronizes with the client shutdown.
+     */
     suspend fun join() = mainLoopCoroutine.join()
 
+    /**
+     * Reads messages from the control queue and writes them to the client.
+     */
     private suspend fun mainLoop() {
         logger.info("[{}] main loop started", name)
         asyncSocketChannel.writeLine(Messages.CLIENT_WELCOME)
@@ -84,7 +98,7 @@ class ConnectedClient(
                 is ControlMessage.RoomMessage -> {
                     logger.trace("[{}] received control message: {}", name, control)
                     val message = Messages.messageFromClient(control.sender.name, control.message)
-                    asyncSocketChannel.writeLine(message + Messages.lineTerminator)
+                    asyncSocketChannel.writeLine(message)
                 }
 
                 is ControlMessage.RemoteClientRequest -> {
@@ -106,11 +120,18 @@ class ConnectedClient(
             // the main loop needs to ensure that the read loop is finished before it can finish
             readLoopCoroutine?.cancelAndJoin()
             clientContainer.remove(this@ConnectedClient)
+            logger.info("[{}] explicitly closing the socket", name)
             asyncSocketChannel.close()
             logger.info("[{}] main loop ending", name)
         }
     }
 
+    /**
+     * Handles a client request.
+     * @param clientRequest the client request to handle.
+     * @param socketChannel the client socket channel to write to.
+     * @return true if the client requested to exit, false otherwise.
+     */
     private suspend fun handleRemoteClientRequest(
         clientRequest: ClientRequest,
         socketChannel: AsynchronousSocketChannel
@@ -135,9 +156,6 @@ class ConnectedClient(
                 logger.info("[{}] received remote client request: {}", name, clientRequest)
                 room?.remove(this)
                 socketChannel.writeLine(Messages.BYE)
-                // this delay was added to ensure that the client receives the message before
-                // the socket is closed
-                delay(100)
                 return true
             }
 
@@ -150,6 +168,7 @@ class ConnectedClient(
                 logger.trace("[{}] received remote client request: {}", name, clientRequest)
                 val currentRoom = room
                 if (currentRoom != null) {
+                    // broadcast the message to all clients in the room
                     currentRoom.post(this, clientRequest.value)
                 } else {
                     socketChannel.writeLine(Messages.ERR_NOT_IN_A_ROOM)
@@ -159,6 +178,9 @@ class ConnectedClient(
         return false
     }
 
+    /**
+     * Reads lines from the client and places them in the control queue.
+     */
     private suspend fun readLoop() {
         try {
             while (true) {
@@ -180,7 +202,7 @@ class ConnectedClient(
         }
         logger.info("[{}] inside read loop cancellation handler", name)
         // read loop is finished, so the main loop should also finish
-        mainLoopCoroutine.cancel()
+        mainLoopCoroutine.cancel() // cannot use cancelAndJoin() here, because it would deadlock
         logger.info("[{}] read loop ending", name)
     }
 

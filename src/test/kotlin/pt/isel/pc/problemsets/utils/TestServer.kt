@@ -31,7 +31,7 @@ class TestServer private constructor(
     fun waitFor(pred: (String) -> Boolean) {
         while (true) {
             val line = stdOutQueue.poll(10, TimeUnit.SECONDS)
-                ?: throw TimeoutException("timeout waiting for line")
+                ?: throw TimeoutException("timeout waiting for standard output line")
             if (pred(line)) {
                 return
             }
@@ -41,7 +41,8 @@ class TestServer private constructor(
     companion object {
         fun start(): TestServer {
             return TestServer(
-                ProcessBuilder("build/install/jvm/bin/jvm")
+                // command may differ from other operating systems
+                ProcessBuilder("build/install/jvm/bin/jvm.bat")
                     .redirectErrorStream(true)
                     .start()
             )

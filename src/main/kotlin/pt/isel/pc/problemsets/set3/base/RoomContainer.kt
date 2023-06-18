@@ -9,5 +9,8 @@ class RoomContainer {
 
     private val roomMap = ConcurrentHashMap<String, Room>()
 
+    /**
+     * Gets a room by name, creating it if it does not exist yet.
+     */
     fun getByName(name: String): Room = roomMap.computeIfAbsent(name) { Room(name) }
 }

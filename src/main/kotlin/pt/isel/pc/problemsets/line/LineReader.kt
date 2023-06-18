@@ -8,8 +8,8 @@ import java.nio.charset.CoderResult
  * Provides a suspend `readLine` interface on top of a sustend function that read bytes
  */
 class LineReader(
-    // The underlying read function
     bufferLength: Int = 1024,
+    // The underlying read function
     private val reader: suspend (ByteBuffer) -> Int
 ) {
     private val byteBuffer = ByteBuffer.allocate(bufferLength)
@@ -41,8 +41,8 @@ class LineReader(
                 else -> decodingResult.throwException()
             }
             byteBuffer.compact()
-            if (byteBuffer.position() == byteBuffer.limit()) {
-                throw IllegalStateException("Buffer length is not enough to decode.")
+            check(byteBuffer.position() != byteBuffer.limit()) {
+                "Buffer length is not enough to decode."
             }
             charBuffer.flip()
             lineParser.offer(charBuffer)

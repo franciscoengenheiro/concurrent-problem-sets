@@ -1,18 +1,17 @@
+@file:JvmName("AppKt")
 package pt.isel.pc.problemsets.set3.base
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.set3.solution.AppCommand
+import pt.isel.pc.problemsets.set3.solution.use
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.math.log
 
 private val logger = LoggerFactory.getLogger("main")
 
@@ -22,18 +21,18 @@ private val logger = LoggerFactory.getLogger("main")
  */
 fun main() {
     logger.info("main started")
-    Server("localhost", 8000).use {
-        // Shutdown hook to handle SIG_TERM signals (gracious shutdown)
-        Runtime.getRuntime().addShutdownHook(
-            Thread {
-                logger.info("shutdown hook started")
-                it.shutdown()
-                logger.info("waiting for server to end")
-                it.join()
-                logger.info("server ended")
-            }
-        )
-        runBlocking {
+    runBlocking {
+        Server("localhost", 8000).use {
+            // Shutdown hook to handle SIG_TERM signals (gracious shutdown)
+            /*Runtime.getRuntime().addShutdownHook(
+                Thread {
+                    logger.info("shutdown hook started")
+                    it.shutdown()
+                    logger.info("waiting for server to end")
+                    it.join()
+                    logger.info("server ended")
+                }
+            )*/
             logger.info("listening to application commands")
             readCommands(it)
         }

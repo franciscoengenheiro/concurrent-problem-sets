@@ -25,4 +25,17 @@ fun spinUntilTimedWait(th: Thread, timeout: Duration = 1.seconds) {
  * Returns a random number between this [Int] and [end] (inclusive).
  * @param end the end of the range.
  */
+@Suppress("UNCHECKED_CAST")
 infix fun <T : Number> T.randomTo(end: T): T = (this.toLong()..end.toLong()).random() as T
+
+/**
+ * Returns a random string of [length] characters.
+ * The string is composed of uppercase and lowercase letters only.
+ * @param length the length of the string.
+ */
+fun randomString(length: Int): String {
+    val allowedChars = ('A'..'Z') + ('a'..'z')
+    return (1..length)
+        .map { allowedChars.random() }
+        .joinToString("")
+}
