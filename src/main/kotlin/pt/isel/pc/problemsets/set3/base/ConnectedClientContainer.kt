@@ -38,6 +38,7 @@ class ConnectedClientContainer {
             isShuttingDown = true
             clients.toList()
         }
+        // logic outside the lock
         clientList.forEach {
             it.shutdown()
         }

@@ -1198,7 +1198,8 @@ system.
 A base implementation of the entire system was provided in order to facilitate the development of the solution,
 and uses the following design:
 
-- Each server instance has a **accept thread** to listen for new connections and creates a client instance for each. Most of
+- Each server instance has a **accept thread** to listen for new connections and creates a client instance for each.
+  Most of
   the time, this thread will be blocked waiting for a new connection to be accepted by the server.
 
 - Each client instance uses **two** threads:
@@ -1315,7 +1316,7 @@ In order to provide a solution to the problem, the following steps were taken:
     - The application coroutine hierarchy is represented in the following image:
 
       | ![Application Coroutine Hierarchy](src/main/resources/set3/coroutine-hierarchy.png) |
-                        |:-----------------------------------------------------------------------------------:|
+      |:-----------------------------------------------------------------------------------:|
       |                          *Application Coroutine Hierarchy*                          |
 
 - Besides the base implementation, these utility classes were also provided:
@@ -1561,14 +1562,16 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int
 
 ### Conditions of execution:
 
-- When a coroutine that calls `readSuspend` or `writeSuspend` is canceled, the byte buffer that was passed as an
-  argument to the respective function could still be in use by the underlying I/O operation
-  after the coroutine is resumed,
-  which could lead to
-  *resource leaks* or *data corruption*.
-  In order to prevent this,
-  a try-catch block was used to catch the `CancellationException` and **close the socket channel**
-  if the operation wasn't completed when the coroutine was canceled.
+When a coroutine that calls `readSuspend` or `writeSuspend` is canceled, the byte buffer that was passed as an
+argument to the respective function could still be in use by the underlying I/O operation
+after the coroutine is resumed,
+which could lead to
+*resource leaks* or *data corruption*.
+In order to prevent this,
+a try-catch block was used to catch the `CancellationException` and **close the socket channel**
+if the operation wasn't completed when the coroutine was canceled.
+The `acceptSuspend` function has the same behavior, even though it doesn't receive any resource as an argument,
+
 
 ## Demonstration
 

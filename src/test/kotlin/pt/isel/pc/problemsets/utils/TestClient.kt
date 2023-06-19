@@ -19,7 +19,7 @@ class TestClient(
     val name = "client-$id"
 
     init {
-        socket.soTimeout = 10_000
+        socket.soTimeout = 5_000
     }
 
     fun connect() {

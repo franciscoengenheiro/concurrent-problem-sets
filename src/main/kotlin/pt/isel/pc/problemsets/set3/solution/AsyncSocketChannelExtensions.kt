@@ -1,4 +1,5 @@
 @file:JvmName("AsyncSocketChannelExtensionsKt")
+
 package pt.isel.pc.problemsets.set3.solution
 
 import kotlinx.coroutines.CancellationException
@@ -18,7 +19,7 @@ private val logger = LoggerFactory.getLogger("AsyncSocketChannelExtensions")
  * Provides a suspendable version of [AsynchronousServerSocketChannel.accept] that
  * is sensible to coroutine cancellation.
  * If the coroutine is canceled but the accept operation was not completed,
- * then the channel is closed immediately to avoid leaking resources.
+ * then the channel is **closed** immediately to avoid leaking resources.
  * @return the accepted socket channel.
  * @throws CancellationException if the coroutine is canceled while suspended.
  */
@@ -32,8 +33,8 @@ suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketC
                 object : CompletionHandler<AsynchronousSocketChannel, Unit?> {
                     override fun completed(result: AsynchronousSocketChannel, attachment: Unit?) {
                         continuation.resume(result)
-                        wasCompleted.set(true)
                     }
+
                     override fun failed(exc: Throwable, attachment: Unit?) {
                         continuation.resumeWithException(exc)
                     }
@@ -44,8 +45,6 @@ suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketC
         logger.info("accept operation canceled")
         val observedStatus = wasCompleted.get()
         if (!observedStatus) {
-            // if the coroutine was canceled and the accept operation was not completed, then the channel must be closed
-            // to avoid leaking resources.
             close()
             logger.info("server socket closed")
         }
@@ -56,7 +55,7 @@ suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketC
 /**
  * Provides a suspendable version of [AsynchronousSocketChannel.read] that is sensible to coroutine cancellation.
  * If the coroutine is canceled but the read operation was not completed,
- * then the channel is closed immediately to avoid leaking resources.
+ * then the channel is **closed** immediately to avoid leaking resources.
  * @param byteBuffer the buffer to read into.
  * @return the number of bytes read.
  * @throws CancellationException if the coroutine is canceled while suspended.
@@ -74,6 +73,7 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
                         continuation.resume(result)
                         wasCompleted.set(true)
                     }
+
                     override fun failed(exc: Throwable, attachment: Unit?) {
                         continuation.resumeWithException(exc)
                     }
@@ -84,8 +84,6 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
         logger.info("read operation canceled")
         val observedStatus = wasCompleted.get()
         if (!observedStatus) {
-            // if the coroutine was canceled and the read operation was not completed, then the channel must be closed
-            // to avoid leaking resources.
             close()
             logger.info("client socket closed")
         }
@@ -96,7 +94,7 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int {
 /**
  * Provides a suspendable version of [AsynchronousSocketChannel.write] that is sensible to coroutine cancellation.
  * If the coroutine is canceled but the write operation was not completed,
- * then the channel is closed immediately to avoid leaking resources.
+ * then the channel is **closed** immediately to avoid leaking resources.
  * @param byteBuffer the buffer to write from.
  * @return the number of bytes written.
  * @throws CancellationException if the coroutine is canceled while suspended.
@@ -125,8 +123,6 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int 
         logger.info("write operation canceled")
         val observedStatus = wasCompleted.get()
         if (!observedStatus) {
-            // if the coroutine was canceled and the read operation was not completed, then the channel must be closed
-            // to avoid leaking resources.
             close()
             logger.info("client socket closed")
         }
@@ -136,6 +132,7 @@ suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int 
 
 /**
  * Allows writing a line to a socket channel.
+ * Attempting to write to a closed channel will result in an exception.
  * @param line the line to write.
  */
 suspend fun AsynchronousSocketChannel.writeLine(line: String) {

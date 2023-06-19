@@ -1,6 +1,7 @@
 package pt.isel.pc.problemsets.async
 
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -12,6 +13,25 @@ import org.slf4j.LoggerFactory
 import kotlin.coroutines.cancellation.CancellationException
 
 class CoroutineScopeAndCancellationTests {
+
+    @Test
+    fun `coroutine scope only resumes when children complete`() {
+        runBlocking {
+            coroutineScope {
+                launch {
+                    delay(1000)
+                    logger.info("coroutine-1")
+                }
+                launch {
+                    delay(2000)
+                    logger.info("coroutine-2")
+                }
+                logger.info("CoroutineScope: Before child coroutines")
+            }
+            logger.info("CoroutineScope: After child coroutines")
+        }
+    }
+
 
     @Test
     fun `cancellation of child coroutine by parent does not cancel parent coroutine`() {

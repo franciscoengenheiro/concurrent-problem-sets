@@ -10,14 +10,14 @@ class Room(
     private val name: String
 ) {
 
-    private val mutex: Mutex = Mutex()
+    private val lock: Mutex = Mutex()
     private val connectedClients = HashSet<ConnectedClient>()
 
     /**
      * Adds a client to the room.
      * @param connectedClient the client to add.
      */
-    suspend fun add(connectedClient: ConnectedClient) = mutex.withLock {
+    suspend fun add(connectedClient: ConnectedClient) = lock.withLock {
         connectedClients.add(connectedClient)
     }
 
@@ -25,7 +25,7 @@ class Room(
      * Removes a client from the room.
      * @param connectedClient the client to remove.
      */
-    suspend fun remove(connectedClient: ConnectedClient) = mutex.withLock {
+    suspend fun remove(connectedClient: ConnectedClient) = lock.withLock {
         connectedClients.remove(connectedClient)
     }
 
@@ -34,8 +34,12 @@ class Room(
      * @param sender the client that sent the message.
      * @param message the message to broadcast.
      */
-    suspend fun post(sender: ConnectedClient, message: String) = mutex.withLock {
-        connectedClients.forEach {
+    suspend fun post(sender: ConnectedClient, message: String) {
+        val observedClients = lock.withLock {
+            connectedClients.toList()
+        }
+        // logic outside the lock
+        observedClients.forEach {
             if (it != sender) {
                 it.send(sender, message)
             }

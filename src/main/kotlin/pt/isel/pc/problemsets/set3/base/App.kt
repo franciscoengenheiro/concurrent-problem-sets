@@ -1,4 +1,5 @@
 @file:JvmName("AppKt")
+
 package pt.isel.pc.problemsets.set3.base
 
 import kotlinx.coroutines.Dispatchers
@@ -24,15 +25,17 @@ fun main() {
     runBlocking {
         Server("localhost", 8000).use {
             // Shutdown hook to handle SIG_TERM signals (gracious shutdown)
-            /*Runtime.getRuntime().addShutdownHook(
+            Runtime.getRuntime().addShutdownHook(
                 Thread {
-                    logger.info("shutdown hook started")
-                    it.shutdown()
-                    logger.info("waiting for server to end")
-                    it.join()
-                    logger.info("server ended")
+                    runBlocking {
+                        logger.info("shutdown hook started")
+                        it.shutdown()
+                        logger.info("waiting for server to end")
+                        it.join()
+                        logger.info("server ended")
+                    }
                 }
-            )*/
+            )
             logger.info("listening to application commands")
             readCommands(it)
         }

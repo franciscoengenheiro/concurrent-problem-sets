@@ -1,10 +1,15 @@
-@file:JvmName("SuspendableAutoCloseableExtensionsKt")
+@file:JvmName("SuspendingExtensionsKt")
 
 package pt.isel.pc.problemsets.set3.solution
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.CompletableFuture
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Executes the given [block] function on this resource and ensures that the resource is
@@ -38,3 +43,18 @@ suspend inline fun <T : SuspendableAutoCloseable?, R> T.use(block: (T) -> R): R 
         }
     }
 }
+
+/**
+ * Provides a suspendable version of the [CompletableFuture.await] method.
+ * @return the result of the [CompletableFuture] when explicitly completed.
+ */
+suspend fun <T> CompletableFuture<T>.await(): T =
+    suspendCancellableCoroutine { continuation ->
+        whenComplete { result, error ->
+            if (error != null) {
+                continuation.resumeWithException(error)
+            } else {
+                continuation.resume(result)
+            }
+        }
+    }

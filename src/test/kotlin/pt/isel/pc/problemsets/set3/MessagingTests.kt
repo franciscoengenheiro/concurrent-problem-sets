@@ -1,6 +1,13 @@
 package pt.isel.pc.problemsets.set3
 
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.set3.base.Messages
 import pt.isel.pc.problemsets.set3.base.Server
@@ -21,6 +28,8 @@ class MessagingTests {
     private val listeningAddress = "localhost"
     private val listeningPort = 9000
 
+    private fun indexedMessage(index: Int): String = "message-$index"
+
     @Test
     fun `first basic scenario`() {
         // given: a random set of clients
@@ -30,7 +39,7 @@ class MessagingTests {
             TestClient(it, listeningAddress, listeningPort)
         }
         runBlocking {
-            Server(listeningAddress, listeningPort).use { server ->
+            Server(listeningAddress, listeningPort, nrThreads = 1).use { server ->
                 // and: a server listening
                 server.waitUntilListening()
 
@@ -69,7 +78,7 @@ class MessagingTests {
     }
 
     @Test
-    fun `random basic scenario`() {
+    fun `random basic scenario with multiple threads`() {
         // given: a random set of clients
         val nOfClients = 500 randomTo 1000
         require(nOfClients > 1)
@@ -77,7 +86,7 @@ class MessagingTests {
             TestClient(it, listeningAddress, listeningPort)
         }
         runBlocking {
-            Server(listeningAddress, listeningPort).use { server ->
+            Server(listeningAddress, listeningPort, nrThreads = 10).use { server ->
                 // and: a server listening
                 server.waitUntilListening()
 
@@ -104,7 +113,7 @@ class MessagingTests {
                 }
 
                 val randomClientB = clients.random()
-                val messageB = randomString(15)
+                val messageB = randomString(25)
 
                 // when: client B sends a message
                 clients[randomClientB.id].send(messageB)
@@ -126,27 +135,25 @@ class MessagingTests {
         }
     }
 
-    /**
-     * Stress test where a large number of clients send a large number of messages and we
-     * check that each client received all the messages from all other clients.
-     */
-    @Test
-    fun `stress test`() {
+    @RepeatedTest(3)
+    fun `A random number of clients send a random number of messages with a random delay between messages`() {
         // given:
-        val nOfClients = 4
+        val nOfClients = 15 randomTo 20
         require(nOfClients > 0)
-        val nOfMessages = 2
+        val nOfMessages = 10 randomTo 20
         require(nOfMessages > 0)
-        val delayBetweenMessagesInMillis = 0L
+        val delayBetweenMessagesInMillis = 0L randomTo 100L
+        require(delayBetweenMessagesInMillis >= 0L)
+
+        val testHelper = MultiThreadTestHelper(60.seconds)
 
         // and: a set of clients
         val clients = List(nOfClients) {
             TestClient(it, listeningAddress, listeningPort)
         }
-        val testHelper = MultiThreadTestHelper(10.seconds)
         val counter = ConcurrentHashMap<String, AtomicLong>()
         runBlocking {
-            Server(listeningAddress, listeningPort).use { server ->
+            Server(listeningAddress, listeningPort, nrThreads = 1).use { server ->
 
                 // and: a server listening
                 server.waitUntilListening()
@@ -161,7 +168,7 @@ class MessagingTests {
                 clients.forEach { client ->
                     // and: all the messages are sent, with an optional delay between messages
                     (1..nOfMessages).forEach { index ->
-                        client.send("message-$index")
+                        client.send(indexedMessage(index))
                         if (delayBetweenMessagesInMillis != 0L) {
                             Thread.sleep(delayBetweenMessagesInMillis)
                         }
@@ -199,7 +206,7 @@ class MessagingTests {
                 (1..nOfClients).forEach {
                     val clientId = "client-$it"
                     (1..nOfMessages).forEach { index ->
-                        val message = Messages.messageFromClient(clientId, "message-$index")
+                        val message = Messages.messageFromClient(clientId, indexedMessage(index))
                         val messageCounter = counter[message]
                         assertNotNull(messageCounter, "counter for message '$message' must not be null")
                         assertEquals((nOfClients - 1).toLong(), messageCounter.get())
@@ -207,5 +214,96 @@ class MessagingTests {
                 }
             }
         }
+    }
+
+    @Test // TODO("should be randomized")
+    fun `Multiple clients send multiple random messages concurrently`() {
+        // given:
+        val nOfClients = 2
+        require(nOfClients > 0)
+        val nOfMessages = 20
+        require(nOfMessages > 0)
+        val delayBetweenMessagesInMillis = 0L
+        require(delayBetweenMessagesInMillis >= 0L)
+
+        // and: a set of clients
+        val clients = List(nOfClients) {
+            TestClient(it, listeningAddress, listeningPort)
+        }
+        val counter = ConcurrentHashMap<String, AtomicLong>()
+        runBlocking(multiThreadDispatcher) {
+            Server(listeningAddress, listeningPort, nrThreads = 10).use { server ->
+
+                // and: a server listening
+                server.waitUntilListening()
+
+                // when: all clients connect and enter the same room
+                coroutineScope {
+                    clients.forEach { client ->
+                        launch {
+                            client.connect()
+                            client.send("/enter lounge")
+                            assertEquals(Messages.enteredRoom("lounge"), client.receive())
+                        }
+                    }
+                }
+
+                coroutineScope {
+                    clients.forEach { client ->
+                        launch {
+                            // and: all the messages are sent, with an optional delay between messages
+                            (1..nOfMessages).forEach { index ->
+                                client.send(indexedMessage(index))
+                                if (delayBetweenMessagesInMillis != 0L) {
+                                    delay(delayBetweenMessagesInMillis)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                coroutineScope {
+                    clients.forEach { client ->
+                        launch {
+                            var receivedMessages = 0
+                            while (true) {
+                                try {
+                                    val msg = client.receive() ?: break
+                                    // ... and updated a shared map with an occurrence counter for each message
+                                    counter.computeIfAbsent(msg) { AtomicLong() }.incrementAndGet()
+
+                                    // ... when all the expected messages are received, the thread ends
+                                    if (++receivedMessages == (nOfClients - 1) * nOfMessages) {
+                                        break
+                                    }
+                                } catch (ex: SocketTimeoutException) {
+                                    throw RuntimeException("Client ${client.id} timed out with $receivedMessages messages received")
+                                }
+                            }
+                            // and: the reader thread ended, meaning all expected messages were received,
+                            // we ask the client to exit
+                            client.send("/exit")
+                            assertEquals(Messages.BYE, client.receive())
+                        }
+                    }
+                }
+
+                // then: each sent message was received (nOfClients - 1) times.
+                (1..nOfClients).forEach {
+                    val clientId = "client-$it"
+                    (1..nOfMessages).forEach { index ->
+                        val message = Messages.messageFromClient(clientId, indexedMessage(index))
+                        val messageCounter = counter[message]
+                        assertNotNull(messageCounter, "counter for message '$message' must not be null")
+                        assertEquals((nOfClients - 1).toLong(), messageCounter.get())
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        @OptIn(DelicateCoroutinesApi::class)
+        val multiThreadDispatcher = newFixedThreadPoolContext(10, "multi-thread dispatcher")
     }
 }
