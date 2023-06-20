@@ -4,6 +4,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import pt.isel.pc.problemsets.set3.base.App
 import pt.isel.pc.problemsets.set3.base.Messages
 import pt.isel.pc.problemsets.set3.base.Server
 import pt.isel.pc.problemsets.set3.solution.use
@@ -14,8 +15,8 @@ import kotlin.test.assertEquals
 
 internal class ShutdownTests {
 
-    private val listeningAddress = "localhost"
-    private val listeningPort = 10000
+    private val listeningAddress = App.listeningAddress
+    private val listeningPort = App.listeningPort
 
     @Test
     fun `Abruptly shutdown the server`() {
@@ -73,7 +74,7 @@ internal class ShutdownTests {
         }
     }
 
-    // @Test
+    //@Test // Requires project build
     fun `Graceful server shutdown with external process termination`() {
         TestServer.start().use { server ->
             // given: a server listening for connections

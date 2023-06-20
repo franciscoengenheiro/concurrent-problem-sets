@@ -18,8 +18,8 @@ import pt.isel.pc.problemsets.set3.solution.use
 object App {
     private val logger = LoggerFactory.getLogger("App")
     private val isListening = SuspendableCountDownLatch(1)
-    private const val listeningAddress = "localhost"
-    private const val listeningPort = 10000
+    const val listeningAddress = "localhost"
+    const val listeningPort = 9000
     private var launchJob: Job? = null
 
     /**
@@ -32,8 +32,13 @@ object App {
 
     /**
      * Awaits for the application to start listening for standard input commands.
+     * Can also be used to synchronize with the server listening state.
      */
-    suspend fun awaitListening() = isListening.await()
+    suspend fun awaitListening() {
+        logger.info("awaiting for application to start listening")
+        isListening.await()
+        logger.info("application is listening")
+    }
 
     /**
      * Launches the application.
@@ -55,6 +60,7 @@ object App {
                         }
                     }
                 )
+                it.waitUntilListening()
                 readCommands(it)
             }
             logger.info("application ended")

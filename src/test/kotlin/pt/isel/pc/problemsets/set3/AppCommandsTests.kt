@@ -16,13 +16,13 @@ class AppCommandsTests {
     @Test
     fun `shutdown command should shutdown the server gracefully within timeout`() {
         val seconds = 5
-        val output = redirectInputOutputStream("/shutdown $seconds") {
+        val output = redirectInOutStream("/shutdown $seconds") {
             runBlocking {
                 launch {
                     App.launch(this)
                 }
                 App.awaitListening()
-                delay(1000)
+                delay(1000) // time to receive the response
             }
         }
         assertEquals(listOf(Messages.SERVER_IS_BOUND), output)
@@ -30,13 +30,13 @@ class AppCommandsTests {
 
     @Test
     fun `shutdown command with invalid timeout should return an error message`() {
-        val output = redirectInputOutputStream("/shutdown -1") {
+        val output = redirectInOutStream("/shutdown -1") {
             runBlocking {
                 launch {
                     App.launch(this)
                 }
                 App.awaitListening()
-                delay(1000)
+                delay(1000) // time to receive the response
                 App.shutdown() // without explicit shutdown, the server will not stop
             }
         }
@@ -51,13 +51,13 @@ class AppCommandsTests {
 
     @Test
     fun `shutdown command without timeout should return an error message`() {
-        val output = redirectInputOutputStream("/shutdown") {
+        val output = redirectInOutStream("/shutdown") {
             runBlocking {
                 launch {
                     App.launch(this)
                 }
                 App.awaitListening()
-                delay(1000)
+                delay(1000) // time to receive the response
                 App.shutdown() // without explicit shutdown, the server will not stop
             }
         }
@@ -72,7 +72,7 @@ class AppCommandsTests {
 
     @Test
     fun `exit command should shutdown the server abruptly`() {
-        val output = redirectInputOutputStream("/exit") {
+        val output = redirectInOutStream("/exit") {
             runBlocking {
                 launch {
                     App.launch(this)
@@ -86,7 +86,7 @@ class AppCommandsTests {
 
     @Test
     fun `exit command does not receive any argument`() {
-        val output = redirectInputOutputStream("/exit 1") {
+        val output = redirectInOutStream("/exit 1") {
             runBlocking {
                 launch {
                     App.launch(this)
@@ -105,35 +105,14 @@ class AppCommandsTests {
     }
 
     @Test
-    fun `wrong command should return an response from the server`() {
-        val output = redirectInputOutputStream("is there any command available?") {
-            runBlocking {
-                launch {
-                    App.launch(this)
-                }
-                App.awaitListening()
-                delay(1000)
-                App.shutdown() // without explicit shutdown, the server will not stop
-            }
-        }
-        assertEquals(
-            listOf(
-                Messages.SERVER_IS_BOUND,
-                Messages.unknownAppCommand(Messages.SEE_APP_COMMANDS)
-            ),
-            output
-        )
-    }
-
-    @Test
     fun `command to see available app commands should print all available commands`() {
-        val output = redirectInputOutputStream("/commands") {
+        val output = redirectInOutStream("/commands") {
             runBlocking {
                 launch {
                     App.launch(this)
                 }
                 App.awaitListening()
-                delay(1000)
+                delay(1000) // time to receive the response
                 App.shutdown() // without explicit shutdown, the server will not stop
             }
         }
@@ -142,13 +121,13 @@ class AppCommandsTests {
 
     @Test
     fun `command to see available app commands does not receive any argument`() {
-        val output = redirectInputOutputStream("/commands gibberish") {
+        val output = redirectInOutStream("/commands gibberish") {
             runBlocking {
                 launch {
                     App.launch(this)
                 }
                 App.awaitListening()
-                delay(1000)
+                delay(1000) // time to receive the response
                 App.shutdown() // without explicit shutdown, the server will not stop
             }
         }
@@ -161,30 +140,47 @@ class AppCommandsTests {
         )
     }
 
-    companion object {
+    @Test
+    fun `wrong command should return an response from the server`() {
+        val output = redirectInOutStream("any command available in the server?") {
+            runBlocking {
+                launch {
+                    App.launch(this)
+                }
+                App.awaitListening()
+                delay(1000) // time to receive the response
+                App.shutdown() // without explicit shutdown, the server will not stop
+            }
+        }
+        assertEquals(
+            listOf(
+                Messages.SERVER_IS_BOUND,
+                Messages.unknownAppCommand(Messages.SEE_APP_COMMANDS)
+            ),
+            output
+        )
+    }
 
+    companion object {
         /**
          * Executes the [test] function with the input and output redirected.
-         * @param lines Each line that will be read from the input.
+         * @param lines Lines to write in the input.
          * @param test Code to test that reads from stdin and writes to stdout.
          * @return Lines written in the output.
          */
-        private fun redirectInputOutputStream(vararg lines: String, test: (() -> Unit)? = null): List<String> {
-            // save old configuration
+        fun redirectInOutStream(vararg lines: String, test: () -> Unit): List<String> {
             val oldInput = System.`in`
             val oldOutput = System.out
             return runCatching {
-                // Set new input
                 System.setIn(ByteArrayInputStream(lines.joinToString(System.lineSeparator()).toByteArray()))
                 val result = ByteArrayOutputStream()
                 // Set new output
                 System.setOut(PrintStream(result))
-                // Run received test function
-                test?.invoke()
+                test()
                 val out = result.toString().split(System.lineSeparator())
-                if (out.size > 1 && out.last().isEmpty()) out.dropLast(1) else out
+                return if (out.size > 1 && out.last().isEmpty()) out.dropLast(1) else out
             }.also {
-                // Return old configuration
+                // Restore old input and output
                 System.setIn(oldInput)
                 System.setOut(oldOutput)
             }.getOrNull() ?: emptyList()
