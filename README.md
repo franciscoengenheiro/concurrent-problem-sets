@@ -23,14 +23,26 @@
     - [ThreadSafeCountedHolder](#threadsafecountedholder)
     - [LockFreeCompletionCombinator](#lockfreecompletioncombinator)
 4. [Set-3](#set-3)
-    - [Base implementation design](#base-implementation-design)
+    - [Base Implementation Design](#base-implementation-design)
     - [Functionality](#functionality)
         - [Base Functionality](#base-functionality)
         - [Additional Functionality](#additional-functionality)
     - [Requirements](#requirements)
     - [Solution](#solution)
+        - [Modifications](#modifications)
+            - [Asynchronous Message Queue](#asynchronous-message-queue)
+            - [Asynchronous Sockets](#asynchronous-sockets)
+            - [Threads to Coroutines](#threads-to-coroutines)
+            - [LineParser and LineReader](#lineparser-and-linereader)
+            - [Application-level Commands](#application-level-commands)
+            - [Server](#server)
+            - [Locks](#locks)
+            - [Suspendable AutoCloseable Interface](#suspendable-autocloseable-interface)
         - [AsyncMessageQueue](#asyncmessagequeue)
         - [Asynchronous Socket Extension Functions](#asynchronous-socket-extension-functions)
+        - [Preview](#preview)
+        - [Tests](#tests)
+        - [Issues](#issues)
         - [Demonstration](#demonstration)
 
 ## Background Concepts and Definitions
@@ -281,11 +293,11 @@ suspend fun method() {
 
 ## Set-1
 
-## NAryExchanger
+### NAryExchanger
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/NAryExchanger.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/NAryExchangerTests.kt)
 
-### Description
+#### Description
 
 This exchanger implementation is similar to
 the [Java Exchanger](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/Exchanger.html), but it allows to
@@ -298,7 +310,7 @@ and each thread can only exchange values with the threads of its group.
 
 A group is completed if the number of threads required to complete the group equals the specified group size.
 
-### Public interface:
+#### Public interface:
 
 ```kotlin
 class NAryExchanger<T>(groupSize: Int) {
@@ -313,7 +325,7 @@ In the following image, an example can be seen of such iteraction between the ex
 |:------------------------------------------------------------:|
 |                   *NAryExchanger example*                    |
 
-### Style of synchronization:
+#### Style of synchronization:
 
 For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which
 represents a group in this context.
@@ -337,13 +349,13 @@ private class Request<T>(
 )
 ```
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `exchange` and awaits, within a timeout duration, for `groupSize` threads to call `exchange` as well.
 - When `groupSize` threads have called `exchange`, the values are exchanged and the threads resume their respective
   work.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 - **Paths** - The thread can take two major paths when calling `exchange`:
     - the thread is the last thread to join the group, thus completing it, and as such, it returns with the exchanged
@@ -358,11 +370,11 @@ private class Request<T>(
     - A thread that specifies a timeout of *zero* will not wait for the group to be completed and will return `null`
       immediately if it did not complete the group.
 
-## BlockingMessageQueue
+### BlockingMessageQueue
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueue.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/BlockingMessageQueueTests.kt)
 
-### Description
+#### Description
 
 This synchronizer is a blocking queue,
 similar to
@@ -379,7 +391,7 @@ This type of synchronizer is useful when dealing in scenarios with multiple prod
 to exchange messages, and as such, it is important to ensure that those messages are enqueued and dequeued in the order
 of arrival, because of that the queue was implemented using FIFO (*First In First Out*) ordering.
 
-### Public interface:
+#### Public interface:
 
 ```kotlin
 class BlockingMessageQueue<T>(private val capacity: Int) {
@@ -398,7 +410,7 @@ consumer threads.
 |:---------------------------------------------------------------------------:|
 |                       *BlockingMessageQueue example*                        |
 
-### Style of synchronization:
+#### Style of synchronization:
 
 For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`,
 which one representing a different condition:
@@ -474,12 +486,12 @@ it's different
 because the *Producer Thread* that gave-up submitted a request that is equals to all other *Producer Thread* requests,
 and as such, it cannot assume that the next *Producer Thread* request in the queue can be completed.
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `tryEnqueue` and expects to enqueue a message within the given timeout.
 - A thread calls `tryDequeue` and expects to dequeue a set of messages within the given timeout.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `tryEnqueue`:
 
@@ -517,11 +529,11 @@ and as such, it cannot assume that the next *Producer Thread* request in the que
         - A thread that specifies a timeout of *zero* will not wait and will return `null` immediately if it did not
           dequeue the number of requested messages.
 
-## ThreadPoolExecutor
+### ThreadPoolExecutor
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutor.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorTests.kt)
 
-### Description
+#### Description
 
 This synchronizer is similar to the
 Java [ThreadPoolExecutor](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
@@ -540,7 +552,7 @@ and as such, the executor does not return any value to the caller.
 If no work is delegated to the executor, the worker threads will be kept alive, waiting for work, for a maximum of
 `keepAliveTime` before being terminated and removed from the pool by the executor.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class ThreadPoolExecutor(
@@ -562,13 +574,13 @@ The following image shows how a task (**R**), that is delegated to a worker thre
 |:------------------------------------------------------------------------:|
 |                      *ThreadPoolExcecutor example*                       |
 
-### Style of synchronization
+#### Style of synchronization
 
 - In this synchronizer, the `Monitor Style` was used to synchronize the *worker threads*.
   Each thread alters the state of the
   synchronizer and doesn't delegate the alteration of that state to another thread.
 
-### Lifecycle
+#### Lifecycle
 
 The executor has a lifecycle that can be described by the following states:
 
@@ -584,13 +596,13 @@ The executor has a lifecycle that can be described by the following states:
   prior to the shutdown process have been executed with success or failure. An outside thread can synchronize with this
   termination process by calling the `awaitTermination` method.
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.
 - A thread calls `shutdown`, expecting the thread pool to start shutting down.
 - A thread calls `awaitTermination` and awaits, for a time duration, for the thread pool to terminate.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `shutdown`:
 
@@ -614,18 +626,18 @@ The executor has a lifecycle that can be described by the following states:
       immediately.
     - the last thread to terminate is also responsible to signal all the threads waiting for the executor to shut down.
 
-## ThreadPoolExecutorWithFuture
+### ThreadPoolExecutorWithFuture
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFuture.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/ThreadPoolExecutorWithFutureTests.kt)
 
-### Description
+#### Description
 
 This synchronizer is similar to the [ThreadPoolExecutor](#threadpoolexecutor), but instead of
 [Runnable](https://docs.oracle.com/javase/7/docs/api/java/lang/Runnable.html) tasks,
 it accepts [Callable](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Callable.html) tasks
 that return a value or throw an exception.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class ThreadPoolExecutorWithFuture(
@@ -649,7 +661,7 @@ A representative (**F**) of the task execution is returned to the outside thread
 |:----------------------------------------------------------------------------------------------:|
 |                            *ThreadPoolExcecutorWithFuture example*                             |
 
-### Style of synchronization
+#### Style of synchronization
 
 - In this synchronizer, the `Monitor Style` was used to synchronize the *worker threads*.
   Each thread alters the state of the synchronizer when necessary and doesn't delegate the alteration of that state to
@@ -667,11 +679,11 @@ private class ExecutionRequest<T>(
 )
 ```
 
-## Promise
+### Promise
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/Promise.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/PromiseTests.kt)
 
-### Description
+#### Description
 
 In order to allow the outside threads to synchronize the result of the task execution,
 the `execute` method of [ThreadPoolExecutorWithFuture](#threadpoolexecutorwithfuture) returns a
@@ -683,7 +695,7 @@ a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Gl
 which provides a *Future* that is explicitly completed, and it can be resolved with a value, rejected with an exception
 or cancelled.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class Promise<T> : Future<T> {
@@ -706,7 +718,7 @@ class Promise<T> : Future<T> {
 }
 ```
 
-### Lifecycle
+#### Lifecycle
 
 The promise has a lifecycle that can be described by the following states:
 
@@ -721,20 +733,20 @@ The promise has a lifecycle that can be described by the following states:
 
 Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
-### Style of synchronization
+#### Style of synchronization
 
 - In this synchronizer, the `Monitor Style` was used in the sense that the thread that alters the state of the promise
   is responsible to signal all threads that are waiting for that state to be altered for them to evaluate the state of
   the promise and act accordingly.
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `cancel`, expecting the task to be cancelled.
 - A thread calls `resolve`, expecting the task to be resolved with the given value.
 - A thread calls `reject`, expecting the task to be rejected with the given exception.
 - A thread calls `get`, expecting to retrieve the result of the task execution.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `get`:
 
@@ -756,12 +768,12 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
 ## Set-2
 
-## CyclicBarrier
+### CyclicBarrier
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrier.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CyclicBarrierTests.kt)
 
-### Description
+#### Description
 
 A [CycleBarrier](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html) is a synchronization
 mechanism
@@ -785,7 +797,7 @@ A new generation of the barrier is created *only* when:
     - no runnable task was provided.
 - the barrier is resetted.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class CyclicBarrier(
@@ -812,7 +824,7 @@ The barrier has the following possible states for each barrier generation.
 |:---------------------------------------------------------------------------:|
 |                 *Cyclic Barrier possible generation states*                 |
 
-### Style of synchronization
+#### Style of synchronization
 
 For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request` per barrier
 generation,
@@ -849,7 +861,7 @@ The following image shows a possible representation of the previous states in a 
 |:-------------------------------------------------------------:|
 |                   *Cyclic Barrier example*                    |
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it
   to be opened and the runnable task to be executed if it exists. Returns the arrival index of this thread where:
@@ -863,7 +875,7 @@ The following image shows a possible representation of the previous states in a 
   be opened.
 - A thread calls `isBroken`, and retrieves information about whether the barrier has been broken or not.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `await`:
 
@@ -888,12 +900,12 @@ The following image shows a possible representation of the previous states in a 
       a `BrokenBarrierException`.
     - the thread timeout expires and throws a `TimeoutException`.
 
-## ThreadSafeContainer
+### ThreadSafeContainer
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeContainer.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeContainerTests.kt)
 
-### Description
+#### Description
 
 A thread-safe container is a container that allows multiple threads to consume the values it
 contains using the `consume` method.
@@ -916,7 +928,7 @@ consume a value.
 Although this is relevant to mention, it is not a problem because the container was not specified to be *fair*.
 This event does not lead to *starvation* because the thread will return `null` and will not be blocked indefinitely.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class ThreadSafeContainer<T>(
@@ -934,7 +946,7 @@ as well as how a value is represented.
 |  ![Thread-Safe Container after consumption](src/main/resources/set2/thread-safe-container-after-consumption.png)  |
 |                                          *Thread-Safe Container example*                                          |
 
-### Style of synchronization
+#### Style of synchronization
 
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that fails to consume a value from the container will retry until possible.
@@ -947,12 +959,12 @@ an [AtomicInteger](https://docs.oracle.com/javase/8/docs/api/java/util/concurren
 An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be
 seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `consume`, and consumes a value from the container, if there is any left or returns `null` if
   the container is empty.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `consume`:
 
@@ -971,12 +983,12 @@ seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
           was
           emptied in the meantime.
 
-## ThreadSafeCountedHolder
+### ThreadSafeCountedHolder
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeCountedHolder.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/ThreadSafeCountedHolderTests.kt)
 
-### Description
+#### Description
 
 A thread-safe-counted holder is a container
 that holds a resource `value` that internally has a `counter` that specifies how many times the value was used.
@@ -984,7 +996,7 @@ If the counter reaches zero, the value is automatically *closed*, and since it i
 [Closeable](https://docs.oracle.com/javase/8/docs/api/java/io/Closeable.html) interface, it can be closed
 by calling the `close` method.
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class ThreadSafeCountedHolder<T : Closeable>(value: T) {
@@ -1003,7 +1015,7 @@ and after a thread decrements the usage counter of the value, and the counter re
 | ![Thread-Safe Counted Holder End Usage And Close](src/main/resources/set2/thread-safe-counted-holder-after-close.png) |
 |                                         *Thread-Safe Counted Holder example*                                          |
 
-### Style of synchronization
+#### Style of synchronization
 
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that fails to increment/decrement the usage counter of the value will retry until possible.
@@ -1017,12 +1029,12 @@ thread-safety and visibility without incurring unnecessary overhead.
 An implementation that is not thread-safe, and that was the starting point of this implementation,
 can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
 
-### Normal execution:
+#### Normal execution:
 
 - A thread calls `tryStartUse`, and retrieves the value if it is not closed, incrementing the usage counter.
 - A thread calls `endUse`, and decrements the usage counter of the value, closing it if the counter reaches zero.
 
-### Conditions of execution:
+#### Conditions of execution:
 
 `tryStartUse`:
 
@@ -1049,12 +1061,12 @@ can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCoun
         - if the thread that decrements the usage counter sees the counter reaching zero, the thread closes the resource
           and sets the `value` to null.
 
-## LockFreeCompletionCombinator
+### LockFreeCompletionCombinator
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set2/LockFreeCompletionCombinator.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set2/CompletionCombinatorTests.kt)
 
-### Description
+#### Description
 
 A [CompletionCombinator](src/main/kotlin/pt/isel/pc/problemsets/sync/combinator/CompletionCombinator.kt)
 that minimizes the usage of locks to synchronize access to shared state. It provides similar functionalities as
@@ -1063,7 +1075,7 @@ and [Promise.any](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Refere
 combinators of
 the [JavaScript Promise API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise).
 
-### Public interface
+#### Public interface
 
 ```kotlin
 class LockFreeCompletionCombinator : CompletionCombinator {
@@ -1082,7 +1094,7 @@ provided.
 |:-----------------------------------------------------------------------------------------------:|
 |                            *Lock-free Completion Combinator example*                            |
 
-### Style of synchronization
+#### Style of synchronization
 
 The implementation uses a lock-free *retry* style of synchronization,
 where a thread that sees a change of state will try to update the state of the combinator until it can
@@ -1104,7 +1116,7 @@ is available [here](src/main/kotlin/pt/isel/pc/problemsets/sync/lockbased/LockBa
 An example of a *lock-based* and a *lock-free* implementations can be consulted in
 this [section](#lock-based-vs-lock-free-algorithms).
 
-### AggregationError
+#### AggregationError
 
 The [AggregationError](src/main/kotlin/pt/isel/pc/problemsets/sync/combinator/AggregationError.kt) is a custom exception
 that is thrown when the `any` combinator is called and **all** of the input stages fail,
@@ -1135,14 +1147,14 @@ was used to provide thread-safe publication of the lazily initialized property.
 This means that once the throwables property is computed,
 all subsequent threads accessing it will see the same value without any synchronization overhead.
 
-### Normal Execution
+#### Normal Execution
 
 - A thread calls the `all` method and passes a list of `CompletionStage` implementations, expecting a list of input
   stages as a result.
 - A thread calls the `any` method and passes a list of `CompletionStage` implementations, expecting a single input stage
   as a result.
 
-### Conditions of execution
+#### Conditions of execution
 
 `all`:
 
@@ -1198,7 +1210,7 @@ system.
 A base implementation of the entire system was provided in order to facilitate the development of the solution,
 and uses the following design:
 
-- Each server instance has a **accept thread** to listen for new connections and creates a client instance for each.
+- Each server instance has an **accept thread** to listen for new connections and creates a client instance for each.
   Most of
   the time, this thread will be blocked waiting for a new connection to be accepted by the server.
 
@@ -1273,9 +1285,16 @@ The developed system should meet the following requirements:
 
 ### Solution
 
-In order to provide a solution to the problem, the following steps were taken:
+Here lies the solution to the problem set, addressing the challenges and requirements outlined.
 
-- A [AsyncMessageQueue](#asyncmessagequeue) class was implemented
+#### Modifications
+
+In order to provide an effective solution, several modifications were made to the existing implementation.
+These modifications aimed to enhance performance, improve functionality, and optimize resource utilization.
+
+##### Asynchronous Message Queue
+
+- A [AsyncMessageQueue](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncMessageQueue.kt) class was implemented
   to provide a syncronized communication mechanism between coroutines,
   since the previous,
   [LinkedBlockingQueue](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/LinkedBlockingQueue.html)
@@ -1283,6 +1302,14 @@ In order to provide a solution to the problem, the following steps were taken:
   used in the base implementation of the `control queue`, namely in
   the [ConnectedClient](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ConnectedClient.kt) class,
   does not provide **coroutine synchronization**, and thus, it was replaced.
+
+- This class provides a simplified behavior of the [Channel](https://kotlinlang.org/docs/channels.html) already
+  implemented in the Kotlin language.
+
+- Visit this [section](#asyncmessagequeue) for more details about the implementation.
+
+##### Asynchronous Sockets
+
 - In order to disallow the threads that are reading from the socket to be blocked while the socket is out of bytes,
   the implementations of the channels used in the base implmentation:
   [ServerSocket](https://docs.oracle.com/javase/8/docs/api/java/net/ServerSocket.html)
@@ -1292,92 +1319,152 @@ In order to provide a solution to the problem, the following steps were taken:
   [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html)
   and [AsynchronousSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousSocketChannel.html),
   respectively.
-  Although this modification could solve the presented issue, it's still necessary to provide a way
+
+- Although this modification could solve the presented issue, it's still necessary to provide a way
   for these socket implementations to synchronize with the coroutine ecosystem
   already in use for other application contexts, like the message queue mentioned above.
-  For that reason, several [asynchronous socket extension functions](#asynchronous-socket-extension-functions) were
+  For that reason,
+  several [asynchronous socket extension functions](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncSocketChannelExtensions.kt)
+  were
   implemented
   to provide an interface that not only takes advantage of the asynchronous implementation of the mentioned sockets,
   but also knows the coroutine system, works with it and is sensible to its effects.
-- In terms of switching from threads to coroutines, the following changes were made:
-    - The `accept-thread` of the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class was replaced
-      by a coroutine, which then launches a new coroutine for each accepted connection.
-      The client coroutine is launched within
-      a [supervisorScope](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/supervisor-scope.html)
-      block,
-      so that if the client coroutine fails and propagates its cancellation, the server coroutine is not cancelled,
-      and can continue to accept new connections.
-    - Both `main-thread` and `read-thread` of
-      the [ConnectedClient](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ConnectedClient.kt) class were replaced by
-      coroutines. In order to take advantage of the coroutine hierarchy with default cancellation
-      propagation, the read coroutine was made a child of the main coroutine,
-      so that if the read coroutine fails or is canceled, the main
-      coroutine is also cancelled, and thus, the client coroutine is cancelled as well.
-    - The application coroutine hierarchy is represented in the following image:
 
-      | ![Application Coroutine Hierarchy](src/main/resources/set3/coroutine-hierarchy.png) |
-      |:-----------------------------------------------------------------------------------:|
-      |                          *Application Coroutine Hierarchy*                          |
+Visit this [section](#asynchronous-socket-extension-functions) for more details about the implementation.
 
-- Besides the base implementation, these utility classes were also provided:
-    - [LineParser](src/main/kotlin/pt/isel/pc/problemsets/line/LineParser.kt): This class receives CharBuffers and
-      provides strings that are partitioned by line breaks. It maintains
-      a StringBuilder to hold the current line being parsed and a NodeLinkedList to store the already parsed lines. The
-      class offers a poll() method to retrieve the parsed lines, and it internally handles line terminators to extract
-      complete lines.
-    - [LineReader](src/main/kotlin/pt/isel/pc/problemsets/line/LineReader.kt): This class provides a suspendable
-      `readLine` interface on top of a suspend function that reads bytes.
-      It
-      uses a `LineParser` internally to parse the received bytes into lines. It utilizes `ByteBuffer` and `CharBuffer`
-      for
-      efficient byte-to-character decoding using a specified character set. The class ensures that the byte buffer is
-      appropriately sized and handles underflows during decoding. The `readLine` method retrieves lines from the
-      LineParser
-      and returns them as strings, or null if there are no more lines to read.
-- In order to provide application-level commands to terminate the server gracefully and abruptly, the following
-  changes were made:
-    - The [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class was modified to provide a
-      timeout `shutdown` method, which starts the shutdown process and tries to terminate the server gracefully.
-    - The `exit` command was modified to call the `shutdown` method with
-      no timeout, which will cause the server to terminate abruptly.
-    - An [AppCommand](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AppCommand.kt) class was created to
-      represent the supported application-level commands, which is similar
-      to [ClientRequest](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ClientRequest.kt) already present in the
-      base implementation.
-    - In the [App](src/main/kotlin/pt/isel/pc/problemsets/set3/base/App.kt), a new coroutine that runs in
-      parallel with
-      the coroutine that is waiting for the server to terminate was added
-      to listen for application-level commands sent via standard input and act accordingly.
-      Since `readline` is a blocking operation, a suspendable version was implemented, following the same
-      approach used in the asynchronous socket extension functions.
-- In the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class constructor, a parameter that
-  represents the `number of threads` was added.
-  In addition, the same parameter is used to create a
+##### Threads to Coroutines
+
+- The `accept-thread` of the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class was replaced
+  by a coroutine, which then launches a new coroutine for each accepted connection.
+  The client coroutine is launched within
+  a [supervisorScope](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/supervisor-scope.html)
+  block,
+  so that if the client coroutine fails and propagates its cancellation, the server coroutine is not cancelled,
+  and can continue to accept new connections.
+- Both `main-thread` and `read-thread` of
+  the [ConnectedClient](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ConnectedClient.kt) class were replaced by
+  coroutines. In order to take advantage of the coroutine hierarchy with default cancellation
+  propagation, the read coroutine was made a child of the main coroutine,
+  so that if the read coroutine fails or is canceled, the main
+  coroutine is also cancelled, and thus, the client coroutine is cancelled as well.
+- The application coroutine hierarchy is represented in the following image:
+
+  | ![Application Coroutine Hierarchy](src/main/resources/set3/coroutine-hierarchy.png) |
+              |:-----------------------------------------------------------------------------------:|
+  |                          *Application Coroutine Hierarchy*                          |
+
+##### LineParser and LineReader
+
+Besides the base implementation, these utility classes were also provided and used in the solution:
+
+- [LineParser](src/main/kotlin/pt/isel/pc/problemsets/line/LineParser.kt): This class receives `CharBuffers` and
+  provides strings that are partitioned by line breaks. It maintains
+  a `StringBuilder` to hold the current line being parsed and a `NodeLinkedList` to store the already parsed lines.
+  The
+  class offers a `poll` method to retrieve the parsed lines, and it internally handles line terminators to extract
+  complete lines.
+- [LineReader](src/main/kotlin/pt/isel/pc/problemsets/line/LineReader.kt): This class provides a suspendable
+  `readLine` interface on top of a suspend function that reads bytes.
+  It
+  uses a `LineParser` internally to parse the received bytes into lines. It utilizes `ByteBuffer` and `CharBuffer`
+  for
+  efficient _byte-to-character_ decoding using a specified character set. The class ensures that the byte buffer is
+  appropriately sized and handles underflows during decoding. The `readLine` method retrieves lines from the
+  `LineParser`
+  and returns them as strings, or null if there are no more lines to read.
+
+##### Application-Level Commands
+
+In order to provide application-level commands to terminate the server gracefully and abruptly, the following changes
+were made:
+
+- The [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class was modified to provide a
+  timeout `shutdown` method, which starts the shutdown process and tries to terminate the server gracefully
+  within the specified timeout. If the timeout is reached, the server will terminate
+  abruptly. This shutdown is **one shot** and can only be called **once**, subsequent calls will have no effect.
+- The `exit` command was modified to call the `shutdown` method with
+  no timeout, which will cause the server to terminate abruptly.
+- An [AppCommand](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AppCommand.kt) class was created to
+  represent the supported application-level commands, which is similar
+  to [ClientRequest](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ClientRequest.kt) already present in the
+  base implementation.
+- In the previous nase implementation entry point, an
+  object [App](src/main/kotlin/pt/isel/pc/problemsets/set3/base/App.kt) was built
+  to represent the application.
+  The App provides a `launch` method that launches the server. This method can only be called **once**.
+  Besides that, it provides the same functionality as the previous entry point, but it was also added
+  a new suspendable method to listen for application-level commands sent via standard input and act accordingly.
+  Since `readline` is a blocking operation, a [suspendable version](
+  src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableExtensions.kt) was implemented, following the same
+  approach used in other suspendable versions of blocking operations.
+
+##### Server
+
+In the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class:
+
+- A parameter that represents the `number of threads` was added to the constructor. The same parameter is used
+  to create a
   [ThreadPoolExecutor](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
-  with a fixed number of threads, which is then used as:
+  with a fixed number of threads, which is then used to construct:
     - a [AsynchronousChannelGroup](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousChannelGroup.html)
     to be used by
     the [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) `open`
     method.
     - a [CoroutineDispatcher](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-dispatcher/index.html)
-    that provides the coroutine context for the server coroutine.
-    It's also worth mentioning that the executor `shutdown` and `awaitTermination` methods are called in the newly
-    added `shutdown` with timeout method, so that the server can terminate gracefully within that timeout.
+  that provides the coroutine context for the `accept coroutine`.
+  It's also worth mentioning that the executor `shutdown` and `awaitTermination` methods are called in the newly
+  added `shutdown` with timeout method, so that the server can terminate gracefully if possible within that
+  timeout.
 
-The following image illustrates how the solution was implemented, with the mentioned modifications identified.
+- In order to make `join` method non-blocking while waiting to synchronize with the server shutdown protocol,
+  a `CompletableFuture` was used to represent the server shutdown protocol, but
+  its `await` method was replaced
+  by a [suspendable version](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableExtensions.kt), so that
+  the coroutine can be suspended while waiting for the server shutdown protocol
+  to complete. Using a `CompletableFuture` also allowed for the `shutdown` method to be called only once, since
+  upon completion, its marked as completed and subsequent calls to `shutdown` will have no
+  effect.
+
+##### Locks
+
+The base implementation used `locks` in
+both [ConnectedClientContainer](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ConnectedClientContainer.kt)
+and [Room](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Room.kt) classes to protect the shared state.
+Since this solution wants to reduce the number of blocked threads, the `locks` were replaced
+by [Mutex](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/sync/-mutex/index.html)
+es, which are essentially suspendable locks. The modification had two points of attention:
+
+- a mutex is not a reentrant lock, so the code had to be modified to avoid **deadlock** ocurrences.
+- avoid suspending while holding a mutex **open calls**, since the coroutine could hold the lock indefinitely,
+  which could lead to unexpected behavior.
+  The described behavior can be seen [here](src/test/kotlin/pt/isel/pc/problemsets/set3/MutexExampleTests.kt).
+
+##### Suspendable AutoCloseable Interface
+
+A [SuspendableAutoCloseable](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableAutoCloseable.kt)
+interface was created to represent an `auto-closeable` resource that can be closed in a **suspendable way**. This
+interface is implemented by the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt). A suspendable
+version of the [use](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableExtensions.kt) function,
+which is the equivalent of the _try-with-resources_ statement was also implemented to be inline with the
+[use](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.io/use.html) function from the Kotlin standard library.
+
+#### Preview
+
+The following image illustrates how the solution was implemented with some of the mentioned modifications
+identified:
 
 | ![Solution Implementation](src/main/resources/set3/solution-imp.png) |
 |:--------------------------------------------------------------------:|
 |                          *Solution preview*                          |
 
-### AsyncMessageQueue
+#### AsyncMessageQueue
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncMessageQueue.kt) |
 [Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncMessageQueueTests.kt)
 
-### Description
+##### Description
 
-This synchronizer is a queue that provides **suspendable** methods for the enqueue and dequeue operations,
+This synchronizer is a queue that provides **suspendable** methods for the `enqueue` and `dequeue` operations,
 which means no thread is blocked while waiting for any operation to complete. It was designed to provide a
 synchronization mechanism between producer and consumer coroutines.
 
@@ -1390,7 +1477,7 @@ The queue:
 Since in a real environment, it is important to ensure the messages are enqueued and dequeued in the order of arrival,
 the queue was implemented using FIFO (*First In First Out*) ordering.
 
-### Public interface
+##### Public interface
 
 ```kotlin
 class AsyncMessageQueue<T>(private val capacity: Int) {
@@ -1414,7 +1501,7 @@ The diagram assumes this order of events:
 |:----------------------------------------------------------------------------:|
 |                      *AsynchronousMessageQueue example*                      |
 
-### Style of synchronization:
+##### Style of synchronization:
 
 For this synchronizer the `Kernel-style` or `Delegation of
 Execution` was used, since the coroutine that cannot complete its request immediately
@@ -1449,12 +1536,12 @@ Both of these request objects have the following properties:
 - the **continuation** of the coroutine that made the request, so that it can be explicitly resumed when the request is
   completed or canceled.
 
-### Normal execution:
+##### Normal execution:
 
 - A coroutine calls `enqueue` and expects to enqueue a message.
 - A coroutine calls `dequeue` and expects to dequeue a message within the given timeout.
 
-### Conditions of execution:
+##### Conditions of execution:
 
 `enqueue`:
 
@@ -1508,11 +1595,11 @@ Both of these request objects have the following properties:
       previous case, but if the request wasn't completed yet, the `TimeoutException` is thrown instead of
       the `CancellationException`.
 
-### Asynchronous Socket Extension Functions
+#### Asynchronous Socket Extension Functions
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/AsyncSocketChannelExtensions.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AsyncSocketChannelExtensionsTests.kt)
 
-### Description
+##### Description
 
 These extension functions were implemented
 in order to provide a way to perform I/O operations on a socket channel without blocking the calling thread,
@@ -1522,7 +1609,7 @@ and [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/
 already provide,
 but are not synchronized nor operate in a coroutine context.
 
-### Implementation
+##### Implementation
 
 In normal conditions, the `AsynchronousSocketChannel` and `AsynchronousServerSocketChannel` classes provide a way to
 perform I/O operations without blocking the calling thread, but instead use callbacks to notify the caller when the
@@ -1538,10 +1625,10 @@ Since we are using coroutines, the extension functions were wrapped in
 a [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html)
 block,
 which is sensitive to coroutine cancellation,
-so that the coroutine can be suspended until the asynchronous I/O operation is completed,
-and then explicitly resume inside the callback, with its result or exception that eventually occurred.
+so that the coroutine can be suspended until the **asynchronous I/O operation** is completed,
+and then **explicitly resume** inside the callback, with its result or exception that eventually occurred.
 
-### Public interface
+##### Public interface
 
 ```kotlin
 @Throws(CancellationException::class)
@@ -1554,32 +1641,81 @@ suspend fun AsynchronousSocketChannel.readSuspend(byteBuffer: ByteBuffer): Int
 suspend fun AsynchronousSocketChannel.writeSuspend(byteBuffer: ByteBuffer): Int
 ```
 
-### Normal execution:
+##### Normal execution:
 
 - A coroutine calls `acceptSuspend` and expects to accept a connection.
 - A coroutine calls `readSuspend` and expects to read data from the socket channel.
 - A coroutine calls `writeSuspend` and expects to write data to the socket channel.
 
-### Conditions of execution:
+##### Conditions of execution:
 
-When a coroutine that calls `readSuspend` or `writeSuspend` is canceled, the byte buffer that was passed as an
-argument to the respective function could still be in use by the underlying I/O operation
-after the coroutine is resumed,
-which could lead to
-*resource leaks* or *data corruption*.
-In order to prevent this,
-a try-catch block was used to catch the `CancellationException` and **close the socket channel**
-if the operation wasn't completed when the coroutine was canceled.
-The `acceptSuspend` function has the same behavior,
-even though it doesn't receive any resource as an argument,
-it was deemed necessary to close the socket channel in response of `accept coroutine` being canceled.
+- When a coroutine that calls `readSuspend` or `writeSuspend` is canceled, the byte buffer that was passed as an
+  argument to the respective function could still be in use by the underlying I/O operation
+  after the coroutine is resumed,
+  which could lead to
+  *resource leaks* or *data corruption*.
+  In order to prevent this,
+  a _try-catch_ block was used to catch the `CancellationException` and **close the socket channel**
+  if the operation wasn't completed when the coroutine was canceled.
+  The `acceptSuspend` function has the same behavior,
+  even though it doesn't receive any resource as an argument,
+  it was deemed necessary to close the socket channel in response of `accept coroutine` being canceled.
+- Since `CompletionHandler` callbacks could be executed in a different thread than the one that called the respective
+  operation to be executed, in all implementations described above, an `AtomicBoolean` was used to
+  mark the underlying I/O operation as completed, this way ensuring **visibility between threads**.
+  the `CancellationException`.
 
-## Demonstration
+#### Tests
 
-In order to demonstrate the implementation of the described [solution](#solution),
-two small videos were recorded, to show both the client and server sides of the application.
+Comprehensive testing was conducted to verify the correctness and reliability of the modified chat server.
+Tests were designed to cover various aspects, including unit testing of individual components, integration testing of
+the server's functionality, stress testing to assess performance under load and find vulnerabilities.
+The tests provide confidence in the stability and effectiveness of the modified chat server implementation.
+The base implementation of the problem set already provided some tests and those were modified to test the new
+functionalities implemented in this solution.
+The more relevant tests are described below.
 
-### Client
+- [Shutdown Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/ShutdownTests.kt) - tests the shutdown of the server
+  and the client gracefully and abruptly.
+- [Messaging Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/MessagingTests.kt) - tests the messaging between
+  clients, entering rooms and leaving rooms, and the server broadcasting messages.
+- [App Commands Tests](src/test/kotlin/pt/isel/pc/problemsets/set3/AppCommandsTests.kt) - tests the application-level
+  commands implemented in the server.
+
+#### Issues
+
+During the development of the solution and respective tests, some issues were found but solved porly or not solved at
+all. These issues are described below.
+
+- The first issue was found in [MessagingTests](src/test/kotlin/pt/isel/pc/problemsets/set3/MessagingTests.kt) when
+  stress testing multiple clients sending messages to each other. When a client sends a request to **exit**, the server
+  sends an acknowledgment message to the client, but after writting to the client socket channel and before the test
+  client
+  read the bytes from its socket, the test client could receive a `ConnectionReset` exception and thus failling the test.
+  The reasons for this happen are not clear, but it seems to be related to the fact that the server is closing the
+  socket
+  channel before the client can read the message. This issue was solved by adding a small `delay` after sending the
+  message to the client and before closing its socket channel, on the server side. This solution, although far from ideal, 
+  was the only one found to solve the issue, and so the issue was marked as **resolved**.
+
+- The second issue was found in [ShutdownTests](src/test/kotlin/pt/isel/pc/problemsets/set3/ShutdownTests.kt) when
+  running the test that uses an **external process** to run the application. The test was failing because when
+  `sendSignal` from [TestServer.kt](src/test/kotlin/pt/isel/pc/problemsets/utils/TestServer.kt)
+  is called, the server process is not terminated since the registered `shutdown hook` in
+  the [App.kt](src/main/kotlin/pt/isel/pc/problemsets/set3/base/App.kt) was not being called, and the server wasn't
+  being
+  gracefully shutdown as expected, making the test fail by timeout since
+  each [TestClient.kt](src/test/kotlin/pt/isel/pc/problemsets/utils/TestClient.kt) has a timeout (*SO_TIMEOUT*) to read
+  from its socket channel.
+  This issue was marked as **unsolved** due to the lack of tools and knowledge for its proper resolution.
+
+#### Demonstration
+
+To showcase the effectiveness of the [solution](#solution), a demonstration of the modified chat server
+in action was performed, where two small videos were recorded, to show both the client and server sides
+of the application.
+
+##### Client
 
 For the client demonstration,
 the [Termius](https://termius.com/) application was used to establish a `TCP/IP` connection to the server.
@@ -1589,7 +1725,7 @@ while the other two are disconnected due to a termination request sent to the se
 
 https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/2be12b52-e29e-49f1-9cd1-72973d50e711
 
-### Server
+##### Server
 
 In the server demonstration, the usage of the application-level supported [commands](#additional-functionality) can be
 observed.

@@ -1,5 +1,6 @@
 package pt.isel.pc.problemsets.set3.base
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
@@ -8,6 +9,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import pt.isel.pc.problemsets.async.SuspendableCountDownLatch
 import pt.isel.pc.problemsets.set3.solution.SuspendableAutoCloseable
@@ -21,6 +23,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.system.measureTimeMillis
 
 /**
  * Represents a server to which clients can connect, enter and leave rooms, and send messages.
@@ -78,19 +81,35 @@ class Server(
             logger.info("server is already shutdown")
             return
         }
-        logger.info("shutting down the client container")
-        clientContainer.shutdown()
-        logger.info("cancelling accept coroutine")
-        acceptCoroutine.cancelAndJoin()
         val totalMillis = TimeUnit.SECONDS.toMillis(timeoutInSeconds)
         logger.info("shutting down the server")
         if (totalMillis == 0L) {
+            logger.info("cancelling accept coroutine")
+            acceptCoroutine.cancel()
             group.shutdownNow() // closes the server socket automatically
         } else {
+            val elapseTimeInMillis = measureTimeMillis {
+                try {
+                    withTimeout(totalMillis) {
+                        logger.info("shutting down the client container")
+                        clientContainer.shutdown()
+                        logger.info("cancelling accept coroutine")
+                        acceptCoroutine.cancelAndJoin()
+                    }
+                } catch (e: CancellationException) {
+                    logger.error("timeout reached while waiting for the server to shutdown, closing abruptly")
+                }
+            }
             group.shutdown()
-            val wasTerminated: Boolean = group.awaitTermination(totalMillis, TimeUnit.MILLISECONDS)
-            if (!wasTerminated) {
-                logger.info("server was not gracefully shutdown within the received timeout, ignoring")
+            val remainingTimeInMillis = totalMillis - elapseTimeInMillis
+            if (remainingTimeInMillis > 0L) {
+                logger.info("waiting for the server to shutdown gracefully")
+                val wasTerminated: Boolean = group.awaitTermination(remainingTimeInMillis, TimeUnit.MILLISECONDS)
+                if (!wasTerminated) {
+                    logger.info("server was not gracefully shutdown within the received timeout, ignoring")
+                }
+            } else {
+                logger.info("timeout reached while waiting for the server to shutdown, closing abruptly")
             }
             logger.info("explicitly closing the server socket")
             asyncServerSocketChannel.close()

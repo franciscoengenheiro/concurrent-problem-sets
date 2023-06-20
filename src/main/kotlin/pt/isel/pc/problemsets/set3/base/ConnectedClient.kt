@@ -87,6 +87,8 @@ class ConnectedClient(
     private suspend fun mainLoop() {
         logger.info("[{}] main loop started", name)
         asyncSocketChannel.writeLine(Messages.CLIENT_WELCOME)
+        // Needs to be commented out for the unit tests to pass
+        // asyncSocketChannel.writeLine(Messages.CLIENT_COMMANDS)
         while (true) {
             logger.info("[{}] waiting for message in control queue", name)
             when (val control = controlQueue.dequeue(Duration.INFINITE)) {

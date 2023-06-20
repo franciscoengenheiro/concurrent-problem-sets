@@ -6,10 +6,14 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.set3.base.App
 import pt.isel.pc.problemsets.set3.base.Messages
+import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import java.util.concurrent.CountDownLatch
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.time.Duration.Companion.seconds
 
 class AppCommandsTests {
 
@@ -159,6 +163,29 @@ class AppCommandsTests {
             ),
             output
         )
+    }
+
+    @Test
+    fun `App can only be launched once`() {
+        val latch = CountDownLatch(1)
+        val testHelper = MultiThreadTestHelper(10.seconds)
+        assertFailsWith<IllegalStateException> {
+            testHelper.createAndStartThread {
+                runBlocking {
+                    latch.await()
+                    App.launch(this)
+                }
+            }
+            testHelper.createAndStartThread {
+                runBlocking {
+                    latch.await()
+                    App.launch(this)
+                }
+            }
+            Thread.sleep(2000)
+            latch.countDown()
+            testHelper.join()
+        }
     }
 
     companion object {

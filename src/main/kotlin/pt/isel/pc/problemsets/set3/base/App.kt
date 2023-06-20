@@ -19,8 +19,11 @@ object App {
     private val logger = LoggerFactory.getLogger("App")
     private val isListening = SuspendableCountDownLatch(1)
     const val listeningAddress = "localhost"
-    const val listeningPort = 9000
+    const val listeningPort = 8000
     private var launchJob: Job? = null
+
+    @Volatile
+    private var launched = false
 
     /**
      * Shuts down the application gracefully.
@@ -45,6 +48,8 @@ object App {
      * @param scope the scope in which the application will run.
      */
     suspend fun launch(scope: CoroutineScope) {
+        check(launched.not()) { "application already launched" }
+        launched = true
         launchJob = scope.launch {
             logger.info("launching application")
             Server(listeningAddress, listeningPort).use {

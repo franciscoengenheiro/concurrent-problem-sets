@@ -6,15 +6,15 @@ package pt.isel.pc.problemsets.set3.base
 object Messages {
     val APP_COMMANDS = listOf(
         "Available commands:",
-        "  /shutdown <timeout>",
-        "  /exit"
+        "- /shutdown <timeout>",
+        "- /exit"
     ).joinToString("\n")
     val CLIENT_COMMANDS = listOf(
         "Available commands:",
-        "  /enter <room>",
-        "  /leave",
-        "  /exit"
-    ).joinToString("\n")
+        "- /enter <room>",
+        "- /leave",
+        "- /exit"
+    ).joinToString(System.lineSeparator())
     const val SERVER_IS_BOUND = "Server is ready for business."
     const val SERVER_IS_ENDING = "Server is ending, bye."
     const val SERVER_ACCEPTED_CLIENT = "Server accepted client."

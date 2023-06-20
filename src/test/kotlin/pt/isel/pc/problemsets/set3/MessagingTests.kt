@@ -215,7 +215,6 @@ internal class MessagingTests {
                     val clientsInRoom = clients.filterIndexed { index, _ ->
                         rooms[index % nOfRooms] == roomName
                     }
-                    println("clients: $clientsInRoom")
                     // check that each client in the room received the message sent by the other clients in the same room
                     clientsInRoom.forEach { client ->
                         val expectedMessage = "Hello from client-${client.id} in $roomName"

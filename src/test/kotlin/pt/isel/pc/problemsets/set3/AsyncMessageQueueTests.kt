@@ -296,7 +296,6 @@ internal class AsyncMessageQueueTests {
         }
         assertTrue(retrievedMsgs.isNotEmpty())
         assertTrue(nrOfTimedoutConsumers > 0)
-        println(nrOfTimedoutConsumers)
         assertEquals(retrievedMsgs.size, exchangedMsgs.size)
         assertEquals(retrievedMsgs.toSet(), exchangedMsgs.keys)
     }

@@ -1,4 +1,4 @@
-package pt.isel.pc.problemsets.sync
+package pt.isel.pc.problemsets.set3
 
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay

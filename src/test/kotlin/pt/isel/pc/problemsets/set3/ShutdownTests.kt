@@ -74,7 +74,7 @@ internal class ShutdownTests {
         }
     }
 
-    //@Test // Requires project build
+    // @Test // Requires project build
     fun `Graceful server shutdown with external process termination`() {
         TestServer.start().use { server ->
             // given: a server listening for connections
