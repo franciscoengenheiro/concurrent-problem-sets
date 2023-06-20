@@ -11,7 +11,7 @@ class TestClient(
     val id: Int,
     private val listeningAddress: String,
     private val listeningPort: Int
-) {
+) : AutoCloseable {
 
     private val socket = Socket()
     private var writer: BufferedWriter? = null
@@ -29,6 +29,10 @@ class TestClient(
         assertEquals(Messages.CLIENT_WELCOME, receive())
     }
 
+    override fun close() {
+        socket.close()
+    }
+
     fun send(msg: String) {
         val observed = writer
         requireNotNull(observed)
@@ -42,4 +46,18 @@ class TestClient(
         requireNotNull(observed)
         return observed.readLine()
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (other !is TestClient) return false
+        return id == other.id && listeningAddress == other.listeningAddress && listeningPort == other.listeningPort
+    }
+
+    override fun hashCode(): Int {
+        var result = id
+        result = 31 * result + listeningAddress.hashCode()
+        result = 31 * result + listeningPort
+        return result
+    }
+
+    override fun toString() = name
 }

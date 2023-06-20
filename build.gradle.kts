@@ -8,7 +8,7 @@ group = "pt.isel.pc"
 version = "1.0-SNAPSHOT"
 
 application {
-    mainClass.set("pt.isel.pc.problemsets.set3.base.AppKt")
+    mainClass.set("pt.isel.pc.problemsets.set3.base.MainKt")
 }
 
 repositories {

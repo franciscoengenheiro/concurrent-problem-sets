@@ -1,5 +1,7 @@
 package pt.isel.pc.problemsets.set3.solution
 
+import pt.isel.pc.problemsets.set3.base.Messages
+
 /**
  * Commands that can be sent to the application.
  */
@@ -24,7 +26,7 @@ sealed interface AppCommand {
     companion object {
         fun parse(line: String): AppCommand {
             if (!line.startsWith("/")) {
-                return UnknownCommand("use /commands to see the available commands")
+                return UnknownCommand(Messages.SEE_APP_COMMANDS)
             }
             val parts = line.split(" ")
             return when (parts.first()) {
@@ -37,25 +39,25 @@ sealed interface AppCommand {
 
         private fun parseShutdown(parts: List<String>): AppCommand {
             if (parts.size != 2) {
-                return UnknownCommand("timeout not specified for /shutdown command")
+                return UnknownCommand(Messages.SHUTDOWN_COMMAND_TIMEOUT_NOT_SPECIFIED)
             }
             val timeout = parts[1].toLongOrNull()
             if (timeout == null || timeout <= 0) {
-                return UnknownCommand("Invalid timeout for /shutdown command")
+                return UnknownCommand(Messages.SHUTDOWN_COMMAND_INVALID_TIMEOUT)
             }
             return ShutdownCommand(timeout)
         }
 
         private fun parseExit(parts: List<String>): AppCommand =
             if (parts.size != 1) {
-                UnknownCommand("/exit command does not have arguments")
+                UnknownCommand(Messages.EXIT_COMMAND_DOES_NOT_HAVE_ARGUMENTS)
             } else {
                 ExitCommand
             }
 
         private fun parseAvalaibleCommands(parts: List<String>): AppCommand =
             if (parts.size != 1) {
-                UnknownCommand("/commands command does not have arguments")
+                UnknownCommand(Messages.AVAILABLE_COMMANDS_COMMAND_DOES_NOT_HAVE_ARGUMENTS)
             } else {
                 AvailableCommands
             }

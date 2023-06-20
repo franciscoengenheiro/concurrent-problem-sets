@@ -2,8 +2,11 @@
 
 package pt.isel.pc.problemsets.set3.solution
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.concurrent.CompletableFuture
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.InvocationKind
@@ -58,3 +61,21 @@ suspend fun <T> CompletableFuture<T>.await(): T =
             }
         }
     }
+
+/**
+ * Suspendable version of readLine function.
+ */
+suspend fun readLineSuspend(): String? = withContext(Dispatchers.IO) {
+    suspendCancellableCoroutine { continuation ->
+        try {
+            val reader = BufferedReader(InputStreamReader(System.`in`))
+            val line = reader.readLine()
+            continuation.invokeOnCancellation {
+                reader.close()
+            }
+            continuation.resume(line)
+        } catch (e: Exception) {
+            continuation.resumeWithException(e)
+        }
+    }
+}

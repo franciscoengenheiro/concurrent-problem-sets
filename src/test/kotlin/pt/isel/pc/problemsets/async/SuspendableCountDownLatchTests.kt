@@ -19,7 +19,7 @@ class SuspendableCountDownLatchTests {
             }
             repeat(11) {
                 launch {
-                    countDownLatch.countdown()
+                    countDownLatch.countDown()
                 }
             }
         }

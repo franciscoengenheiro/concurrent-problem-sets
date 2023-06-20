@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
@@ -104,7 +105,7 @@ class ConnectedClient(
                 is ControlMessage.RemoteClientRequest -> {
                     val line = control.request
                     if (handleRemoteClientRequest(line, asyncSocketChannel)) {
-                        break
+                        break // client requested to exit
                     }
                 }
 
@@ -116,6 +117,7 @@ class ConnectedClient(
         }
         withContext(NonCancellable) {
             logger.info("[{}] inside main loop cancellation handler", name)
+            delay(100) // give the remote client some time to read the last message
             logger.info("[{}] cancelling read loop", name)
             // the main loop needs to ensure that the read loop is finished before it can finish
             readLoopCoroutine?.cancelAndJoin()

@@ -1539,7 +1539,7 @@ a [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/ko
 block,
 which is sensitive to coroutine cancellation,
 so that the coroutine can be suspended until the asynchronous I/O operation is completed,
-and then explicitly resumed, inside the callback, with its result or with the exception that eventually occurred.
+and then explicitly resume inside the callback, with its result or exception that eventually occurred.
 
 ### Public interface
 
@@ -1570,8 +1570,9 @@ which could lead to
 In order to prevent this,
 a try-catch block was used to catch the `CancellationException` and **close the socket channel**
 if the operation wasn't completed when the coroutine was canceled.
-The `acceptSuspend` function has the same behavior, even though it doesn't receive any resource as an argument,
-
+The `acceptSuspend` function has the same behavior,
+even though it doesn't receive any resource as an argument,
+it was deemed necessary to close the socket channel in response of `accept coroutine` being canceled.
 
 ## Demonstration
 

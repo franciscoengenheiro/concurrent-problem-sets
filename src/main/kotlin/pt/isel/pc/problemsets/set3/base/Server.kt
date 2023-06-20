@@ -8,17 +8,16 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
+import pt.isel.pc.problemsets.async.SuspendableCountDownLatch
 import pt.isel.pc.problemsets.set3.solution.SuspendableAutoCloseable
 import pt.isel.pc.problemsets.set3.solution.acceptSuspend
 import pt.isel.pc.problemsets.set3.solution.await
 import java.net.InetSocketAddress
+import java.net.SocketException
 import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.AsynchronousServerSocketChannel
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -45,12 +44,11 @@ class Server(
     private val group: AsynchronousChannelGroup = AsynchronousChannelGroup.withThreadPool(multiThreadExecutor)
     private val asyncServerSocketChannel: AsynchronousServerSocketChannel = AsynchronousServerSocketChannel.open(group)
     private val clientContainer = ConnectedClientContainer()
-    private val isListening = CountDownLatch(1)
+    private val isListening = SuspendableCountDownLatch(1)
     private val shutdownProtocol = CompletableFuture<Boolean>()
-    private val shutdownLock = Mutex()
 
     private val acceptCoroutine: Job = CoroutineScope(multiThreadDispatcher).launch {
-        logger.info("listening coroutine started")
+        logger.info("accept coroutine started")
         asyncServerSocketChannel.bind(InetSocketAddress(listeningAddress, listeningPort))
         println(Messages.SERVER_IS_BOUND)
         isListening.countDown()
@@ -64,9 +62,8 @@ class Server(
 
     /**
      * Waits until the server is listening for connections.
-     * Blocks the caller until the server is listening.
      */
-    fun waitUntilListening() = isListening.await()
+    suspend fun waitUntilListening() = isListening.await()
 
     /**
      * Shutdown the server and wait for the operation to end gracefully.
@@ -77,31 +74,29 @@ class Server(
      */
     suspend fun shutdown(timeoutInSeconds: Long) {
         require(timeoutInSeconds >= 0L) { "timeout in seconds must be non-negative" }
-        shutdownLock.withLock {
-            if (shutdownProtocol.isDone) {
-                logger.info("server is already shutdown")
-                return
-            }
-            logger.info("shutting down the client container")
-            clientContainer.shutdown()
-            logger.info("cancelling accept coroutine")
-            acceptCoroutine.cancelAndJoin()
-            val totalMillis = TimeUnit.SECONDS.toMillis(timeoutInSeconds)
-            logger.info("shutting down the server")
-            if (totalMillis == 0L) {
-                group.shutdownNow()
-            } else {
-                group.shutdown()
-                val wasTerminated: Boolean = group.awaitTermination(totalMillis, TimeUnit.MILLISECONDS)
-                if (!wasTerminated) {
-                    logger.info("server was not gracefully shutdown within the timeout, ignoring")
-                }
-                logger.info("explicitly closing the server socket")
-                asyncServerSocketChannel.close()
-            }
-            shutdownProtocol.complete(true)
-            logger.info("server shutdown completed")
+        if (shutdownProtocol.isDone) {
+            logger.info("server is already shutdown")
+            return
         }
+        logger.info("shutting down the client container")
+        clientContainer.shutdown()
+        logger.info("cancelling accept coroutine")
+        acceptCoroutine.cancelAndJoin()
+        val totalMillis = TimeUnit.SECONDS.toMillis(timeoutInSeconds)
+        logger.info("shutting down the server")
+        if (totalMillis == 0L) {
+            group.shutdownNow() // closes the server socket automatically
+        } else {
+            group.shutdown()
+            val wasTerminated: Boolean = group.awaitTermination(totalMillis, TimeUnit.MILLISECONDS)
+            if (!wasTerminated) {
+                logger.info("server was not gracefully shutdown within the received timeout, ignoring")
+            }
+            logger.info("explicitly closing the server socket")
+            asyncServerSocketChannel.close()
+        }
+        shutdownProtocol.complete(true)
+        logger.info("server shutdown completed")
     }
 
     /**
@@ -115,7 +110,7 @@ class Server(
     suspend fun join() = shutdownProtocol.await()
 
     /**
-     * Closes the server abruptly.
+     * Closes the server abruptly and waits for the operation to end.
      */
     suspend fun exit() {
         shutdown(0)
@@ -142,19 +137,25 @@ class Server(
             logger.error("Unhandled exception: {}, {}", exception.javaClass.name, exception.message)
         }
         while (true) {
-            logger.info("accepting new client")
-            val asyncSocketChannel = asyncServerSocketChannel.acceptSuspend()
-            supervisorScope.launch(exceptionHandler) {
-                println(Messages.SERVER_ACCEPTED_CLIENT)
-                logger.info("client socket accepted, remote address is {}", asyncSocketChannel.remoteAddress)
-                val client = ConnectedClient(
-                    asyncSocketChannel = asyncSocketChannel,
-                    id = ++clientId,
-                    roomContainer = roomContainer,
-                    clientContainer = clientContainer,
-                    coroutineScope = this
-                )
-                clientContainer.add(client)
+            try {
+                logger.info("accepting new client")
+                val asyncSocketChannel = asyncServerSocketChannel.acceptSuspend()
+                supervisorScope.launch(exceptionHandler) {
+                    println(Messages.SERVER_ACCEPTED_CLIENT)
+                    logger.info("client socket accepted, remote address is {}", asyncSocketChannel.remoteAddress)
+                    val client = ConnectedClient(
+                        asyncSocketChannel = asyncSocketChannel,
+                        id = ++clientId,
+                        roomContainer = roomContainer,
+                        clientContainer = clientContainer,
+                        coroutineScope = this
+                    )
+                    clientContainer.add(client)
+                }
+            } catch (e: SocketException) {
+                logger.error("SocketException, ending")
+                // We assume that an exception means the server was asked to terminate
+                break
             }
         }
     }

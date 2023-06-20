@@ -32,7 +32,6 @@ class CoroutineScopeAndCancellationTests {
         }
     }
 
-
     @Test
     fun `cancellation of child coroutine by parent does not cancel parent coroutine`() {
         runBlocking {

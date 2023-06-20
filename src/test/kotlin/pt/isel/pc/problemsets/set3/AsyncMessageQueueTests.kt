@@ -31,10 +31,12 @@ internal class AsyncMessageQueueTests {
 
     companion object {
         @OptIn(DelicateCoroutinesApi::class)
-        val singleThreadDispatcher: ExecutorCoroutineDispatcher = newSingleThreadContext("single-thread dispatcher")
+        private val singleThreadDispatcher: ExecutorCoroutineDispatcher = newSingleThreadContext(
+            "single-thread dispatcher"
+        )
 
         @OptIn(DelicateCoroutinesApi::class)
-        val multiThreadDispatcher = newFixedThreadPoolContext(3, "multi-thread dispatcher")
+        private val multiThreadDispatcher = newFixedThreadPoolContext(3, "multi-thread dispatcher")
     }
 
     private val defaultMsg = "message"
