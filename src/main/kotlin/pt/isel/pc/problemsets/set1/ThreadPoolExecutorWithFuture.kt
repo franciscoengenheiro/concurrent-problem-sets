@@ -72,6 +72,9 @@ class ThreadPoolExecutorWithFuture(
         if (!inShutdown) {
             inShutdown = true
             awaitWorkItemCondition.signalAll()
+            if (nOfWorkerThreads == 0) {
+                awaitTerminationCondition.signalAll()
+            }
         }
     }
 
@@ -131,6 +134,8 @@ class ThreadPoolExecutorWithFuture(
                 // 1. Give the work item to a waiting worker thread that was already created
                 requestQueue.enqueue(request)
                 awaitWorkItemCondition.signal()
+                // nOfWaitingWorkerThreads is decremented by the worker thread that takes the work item
+                nOfWaitingWorkerThreads -= 1
             } else if (nOfWorkerThreads < maxThreadPoolSize) {
                 // 2. If not possible, create a new worker thread
                 nOfWorkerThreads += 1
@@ -181,7 +186,7 @@ class ThreadPoolExecutorWithFuture(
         lock.withLock {
             // fast-path
             if (requestQueue.notEmpty) {
-                return GetWorkItemResult.WorkItem(requestQueue.pull().value, timeout)
+                return WorkItem(requestQueue.pull().value, timeout)
             }
             // Terminate this worker thread if the thread pool is in shutdown mode
             // and there are no more work items in the queue
@@ -191,12 +196,12 @@ class ThreadPoolExecutorWithFuture(
                 if (nOfWorkerThreads == 0) {
                     awaitTerminationCondition.signalAll()
                 }
-                return GetWorkItemResult.Exit
+                return Exit
             }
             // If timeout is 0, the worker thread should be terminated immediately
             // and not wait for a work item to be placed in the queue
             if (timeout == 0L) {
-                return GetWorkItemResult.Exit
+                return Exit
             }
             // wait-path
             nOfWaitingWorkerThreads += 1
@@ -208,11 +213,12 @@ class ThreadPoolExecutorWithFuture(
                     // If the thread is interrupted while waiting, it should be terminated
                     nOfWaitingWorkerThreads -= 1
                     nOfWorkerThreads -= 1
-                    return GetWorkItemResult.Exit
+                    return Exit
                 }
                 if (requestQueue.notEmpty) {
-                    nOfWaitingWorkerThreads -= 1
-                    return GetWorkItemResult.WorkItem(requestQueue.pull().value, remainingNanos)
+                    // if a worker thread was signal with work in the queue,
+                    // the counter was decremented by the thread that placed the work item already
+                    return WorkItem(requestQueue.pull().value, remainingNanos)
                 }
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
@@ -221,13 +227,13 @@ class ThreadPoolExecutorWithFuture(
                         // If this was the last worker thread, signal that the thread pool is terminated
                         awaitTerminationCondition.signalAll()
                     }
-                    return GetWorkItemResult.Exit
+                    return Exit
                 }
                 if (remainingNanos <= 0) {
                     nOfWaitingWorkerThreads -= 1
                     nOfWorkerThreads -= 1
-                    // Giving-up by timeout, remove value queue
-                    return GetWorkItemResult.Exit
+                    // Giving-up by timeout, remove value from the queue
+                    return Exit
                 }
             }
         }
@@ -246,11 +252,11 @@ class ThreadPoolExecutorWithFuture(
             safeRun(currentRequest)
             val result = getNextWorkItem(remainingNanos)
             currentRequest = when (result) {
-                is GetWorkItemResult.WorkItem<*> -> {
+                is WorkItem<*> -> {
                     remainingNanos = result.remainingIdleTime
                     result.workItem
                 }
-                GetWorkItemResult.Exit -> return
+                Exit -> return
             }
         }
     }

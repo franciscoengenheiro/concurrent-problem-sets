@@ -56,19 +56,22 @@ class ThreadPoolExecutor(
     /**
      * Initiates an orderly shutdown in which previously submitted work items are executed,
      * but no new work items will be accepted.
-     * This method awakes all worker threads that were waiting for
-     * work in order to clear the queue of work items or to terminate.
      * Invocation has no additional effect if already shut down.
      */
     fun shutdown() = lock.withLock {
         if (!inShutdown) {
             inShutdown = true
             awaitWorkItemCondition.signalAll()
+            // if no worker thread is active, the threads waiting for the shutdown will never be signaled,
+            // so a signal needs to be sent here
+            if (nOfWorkerThreads == 0) {
+                awaitTerminationCondition.signalAll()
+            }
         }
     }
 
     /**
-     * Provides a way to synchronize with the shut-down of the thread pool executor.
+     * Provides a way to synchronize with the shutdown process of the thread pool executor.
      * @param timeout the maximum time to wait for the thread pool executor to shut down.
      * @return true if the thread pool executor has been shut down, false if it didn't
      * in the given timeout.
@@ -114,6 +117,8 @@ class ThreadPoolExecutor(
             // 1. Give the work item to a waiting worker thread that was already created
             workItemsQueue.enqueue(workItem)
             awaitWorkItemCondition.signal()
+            // nOfWaitingWorkerThreads is decremented by the worker thread that takes the work item
+            nOfWaitingWorkerThreads -= 1
         } else if (nOfWorkerThreads < maxThreadPoolSize) {
             // 2. If not possible, create a new worker thread
             nOfWorkerThreads += 1
@@ -155,14 +160,14 @@ class ThreadPoolExecutor(
      * or until the thread pool is in shutdown mode.
      * @param timeout the maximum time to wait for a work item to be placed in the queue.
      * @return [GetWorkItemResult.WorkItem] if there is a work item in the queue, or
-     * [GetWorkItemResult.Exit] if the thread pool is in *shutdown* mode,
+     * [GetWorkItemResult.Exit] if the thread pool is in *shutdown* mode
      * or the timeout is exceeded.
      */
     private fun getNextWorkItem(timeout: Long): GetWorkItemResult {
         lock.withLock {
             // fast-path
             if (workItemsQueue.notEmpty) {
-                return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, timeout)
+                return WorkItem(workItemsQueue.pull().value, timeout)
             }
             // Terminate this worker thread if the thread pool is in shutdown mode
             // and there are no more work items in the queue
@@ -172,28 +177,23 @@ class ThreadPoolExecutor(
                 if (nOfWorkerThreads == 0) {
                     awaitTerminationCondition.signalAll()
                 }
-                return GetWorkItemResult.Exit
+                return Exit
             }
             // If timeout is 0, the worker thread should be terminated immediately
             // and not wait for a work item to be placed in the queue
             if (timeout == 0L) {
-                return GetWorkItemResult.Exit
+                return Exit
             }
             // wait-path
             nOfWaitingWorkerThreads += 1
             var remainingNanos = timeout
             while (true) {
-                try {
-                    remainingNanos = awaitWorkItemCondition.awaitNanos(remainingNanos)
-                } catch (e: InterruptedException) {
-                    // If the thread is interrupted while waiting, it should be terminated
-                    nOfWaitingWorkerThreads -= 1
-                    nOfWorkerThreads -= 1
-                    return GetWorkItemResult.Exit
-                }
+                remainingNanos = awaitWorkItemCondition.awaitNanos(remainingNanos)
+                // purposely ignoring interruption requests
                 if (workItemsQueue.notEmpty) {
-                    nOfWaitingWorkerThreads -= 1
-                    return GetWorkItemResult.WorkItem(workItemsQueue.pull().value, remainingNanos)
+                    // if a worker thread was signal with work in the queue,
+                    // the counter was decremented by the thread that placed the work item already
+                    return WorkItem(workItemsQueue.pull().value, remainingNanos)
                 }
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
@@ -202,13 +202,13 @@ class ThreadPoolExecutor(
                         // If this was the last worker thread, signal that the thread pool is terminated
                         awaitTerminationCondition.signalAll()
                     }
-                    return GetWorkItemResult.Exit
+                    return Exit
                 }
                 if (remainingNanos <= 0) {
                     nOfWaitingWorkerThreads -= 1
                     nOfWorkerThreads -= 1
-                    // Giving-up by timeout, remove value queue
-                    return GetWorkItemResult.Exit
+                    // Giving-up by timeout, remove value from the queue
+                    return Exit
                 }
             }
         }
@@ -227,11 +227,11 @@ class ThreadPoolExecutor(
             safeRun(currentRunnable)
             val result = getNextWorkItem(remainingNanos)
             currentRunnable = when (result) {
-                is GetWorkItemResult.WorkItem -> {
+                is WorkItem -> {
                     remainingNanos = result.remainingIdleTime
                     result.workItem
                 }
-                GetWorkItemResult.Exit -> return
+                Exit -> return
             }
         }
     }

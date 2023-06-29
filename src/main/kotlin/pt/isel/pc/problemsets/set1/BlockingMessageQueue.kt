@@ -33,7 +33,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     private class ProducerRequest<T>(
         val message: T,
         val condition: Condition,
-        var canEnqueue: Boolean = false
+        var isCompleted: Boolean = false
     )
 
     // Each consumer request represents a thread request to dequeue a set of messages
@@ -41,13 +41,13 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
         val nOfMessages: Int,
         val condition: Condition,
         var messages: List<T> = emptyList(),
-        var canDequeue: Boolean = false
+        var isCompleted: Boolean = false
     )
 
     // Queues
     private val producerRequestsQueue = NodeLinkedList<ProducerRequest<T>>()
     private val consumerRequestsQueue = NodeLinkedList<ConsumerRequest<T>>()
-    private val messageQueue: NodeLinkedList<T> = NodeLinkedList()
+    private val messageQueue = NodeLinkedList<T>()
 
     /**
      * Tries to enqueue a message.
@@ -65,7 +65,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
     @Throws(InterruptedException::class)
     fun tryEnqueue(message: T, timeout: Duration): Boolean {
         lock.withLock {
-            // fast-path:
+            // fast-path A:
             if (consumerRequestsQueue.notEmpty && consumerRequestsQueue.headNode?.value?.nOfMessages == 1) {
                 // The thread that tries to enqueue a message can do it immediately because it
                 // there is a consumer thread waiting to dequeue the message,
@@ -74,6 +74,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 completeConsumerRequest(listOf(message))
                 return true
             }
+            // fast-path B:
             if (producerRequestsQueue.empty && messageQueue.count < capacity) {
                 // The thread that tries to enqueue a message can do it immediately because it
                 // is the first thread at the head of the producer requests queue
@@ -82,7 +83,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 tryToCompleteConsumerRequests()
                 return true
             }
-            // the current thread does not want to wait
+            // fast-path C:
             if (timeout == 0.seconds) {
                 return false
             }
@@ -96,7 +97,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 try {
                     remainingNanos = localRequest.value.condition.awaitNanos(remainingNanos)
                 } catch (e: InterruptedException) {
-                    if (localRequest.value.canEnqueue) {
+                    if (localRequest.value.isCompleted) {
                         // Arm the interrupt flag in order to not lose the interruption request
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
@@ -107,7 +108,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     producerRequestsQueue.remove(localRequest)
                     throw e
                 }
-                if (localRequest.value.canEnqueue) {
+                if (localRequest.value.isCompleted) {
                     return true
                 }
                 if (remainingNanos <= 0) {
@@ -159,7 +160,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                 try {
                     remainingNanos = localRequest.value.condition.awaitNanos(remainingNanos)
                 } catch (e: InterruptedException) {
-                    if (localRequest.value.canDequeue) {
+                    if (localRequest.value.isCompleted) {
                         // Arm the interrupt flag in order to not lose the interruption request
                         // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
@@ -170,7 +171,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
                     tryToCompleteConsumerRequests()
                     throw e
                 }
-                if (localRequest.value.canDequeue) {
+                if (localRequest.value.isCompleted) {
                     return localRequest.value.messages
                 }
                 if (remainingNanos <= 0) {
@@ -207,7 +208,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
         val request = consumerRequestsQueue.pull().value
         request.messages = directMessages ?: dequeueMessages(request.nOfMessages)
         request.condition.signal()
-        request.canDequeue = true
+        request.isCompleted = true
     }
 
     /**
@@ -221,7 +222,7 @@ class BlockingMessageQueue<T>(private val capacity: Int) {
             val request = producerRequestsQueue.pull().value
             messageQueue.enqueue(request.message)
             request.condition.signal()
-            request.canEnqueue = true
+            request.isCompleted = true
         }
     }
 

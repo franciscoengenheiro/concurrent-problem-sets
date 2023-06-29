@@ -59,7 +59,7 @@ class NAryExchanger<T>(private val groupSize: Int) {
                 // Create a new group request for the upcoming threads
                 currentRequest = Request(lock.newCondition())
                 elementsAlreadyInGroup = 0
-                return values.toList()
+                return values
             }
             // the current thread does not want to wait
             if (timeout == 0.seconds) {

@@ -325,7 +325,7 @@ and each thread can only exchange values with the threads of its group.
 
 A group is completed if the number of threads required to complete the group equals the specified group size.
 
-### Public interface:
+### Public interface
 
 ```kotlin
 class NAryExchanger<T>(groupSize: Int) {
@@ -340,7 +340,7 @@ In the following image, an example can be seen of such iteraction between the ex
 |:------------------------------------------------------------:|
 |                   *NAryExchanger example*                    |
 
-### Style of synchronization:
+### Style of synchronization
 
 For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of a `Request`, which
 represents a group in this context.
@@ -364,13 +364,13 @@ private class Request<T>(
 )
 ```
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `exchange` and awaits, within a timeout duration, for `groupSize` threads to call `exchange` as well.
 - When `groupSize` threads have called `exchange`, the values are exchanged and the threads resume their respective
   work.
 
-### Conditions of execution:
+### Conditions of execution
 
 - **Paths** - The thread can take two major paths when calling `exchange`:
     - the thread is the last thread to join the group, thus completing it, and as such, it returns with the exchanged
@@ -395,7 +395,7 @@ This synchronizer is a blocking queue,
 similar to
 an [LinkedBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/LinkedBlockingQueue.html)
 that allows for multiple threads to concurrently enqueue and dequeue messages.
-It also allows for each thread to specify a willing-to-wait timeout for the enqueue and dequeue operations to complete.
+It also allows for each thread to specify a _willing-to-wait_ timeout for the enqueue and dequeue operations to complete.
 
 The term *blocking* refers to the fact that the queue is bounded,
 and as such, if a thread tries to enqueue a message when the queue is full,
@@ -406,7 +406,7 @@ This type of synchronizer is useful when dealing in scenarios with multiple prod
 to exchange messages, and as such, it is important to ensure that those messages are enqueued and dequeued in the order
 of arrival, because of that the queue was implemented using FIFO (*First In First Out*) ordering.
 
-### Public interface:
+### Public interface
 
 ```kotlin
 class BlockingMessageQueue<T>(private val capacity: Int) {
@@ -425,7 +425,7 @@ consumer threads.
 |:---------------------------------------------------------------------------:|
 |                       *BlockingMessageQueue example*                        |
 
-### Style of synchronization:
+### Style of synchronization
 
 For this synchronizer the `Kernel-style` or `Delegation of execution` was used in form of several `Requests`,
 which one representing a different condition:
@@ -436,7 +436,7 @@ which one representing a different condition:
   private class ProducerRequest<T>(
       val message: T,
       val condition: Condition,
-      var canEnqueue: Boolean = false
+      var isCompleted: Boolean = false
   )
   ```
 - `ConsumerRequest` - represents a *Consumer Thread* request to dequeue a set of messages.
@@ -446,7 +446,7 @@ which one representing a different condition:
       val nOfMessages: Int,
       val condition: Condition,
       var messages: List<T> = emptyList(),
-      var canDequeue: Boolean = false
+      var isCompleted: Boolean = false
   )
   ```
 
@@ -501,12 +501,12 @@ it's different
 because the *Producer Thread* that gave-up submitted a request that is equals to all other *Producer Thread* requests,
 and as such, it cannot assume that the next *Producer Thread* request in the queue can be completed.
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `tryEnqueue` and expects to enqueue a message within the given timeout.
 - A thread calls `tryDequeue` and expects to dequeue a set of messages within the given timeout.
 
-### Conditions of execution:
+### Conditions of execution
 
 `tryEnqueue`:
 
@@ -600,7 +600,7 @@ The following image shows how a task (**R**), that is delegated to a worker thre
 The executor has a lifecycle that can be described by the following states:
 
 | ![ThreadPool States](src/main/resources/set1/thread-pool-states.png) |
-  |:--------------------------------------------------------------------:|
+ |:--------------------------------------------------------------------:|
 |                     *ThreadPoolExecutor states*                      |
 
 - **Ready** - the executor is accepting tasks to be executed. Outside threads can delegate tasks to the thread pool
@@ -611,13 +611,13 @@ The executor has a lifecycle that can be described by the following states:
   prior to the shutdown process have been executed with success or failure. An outside thread can synchronize with this
   termination process by calling the `awaitTermination` method.
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `execute` and leaves, expecting the task to be executed by a worker thread within the time limit.
 - A thread calls `shutdown`, expecting the thread pool to start shutting down.
 - A thread calls `awaitTermination` and awaits, for a time duration, for the thread pool to terminate.
 
-### Conditions of execution:
+### Conditions of execution
 
 `shutdown`:
 
@@ -626,15 +626,18 @@ The executor has a lifecycle that can be described by the following states:
   for more tasks to be delegated to them that the executor is shutting down, and they should clear the queue of tasks
   and
   terminate if no more work is available.
+- In this call, a signal is sent to all the threads waiting for the executor to shut down if the number of active
+  worker threads is already **zero**.
+  Such signal is needed since there's not a last worker thread to signal the other threads waiting for the executor 
+  to shut down.
 
 `awaitTermination`:
 
 - **Paths** - The thread can take two major paths when calling this method:
     - the thread pool has already terminated, and as such, the thread returns `true` immediately (***fast-path***).
-    - the thread pool hasn't terminated yet, and as such, the thread passively awaits for the thread pool to terminate (
-      ***wait-path***).
+    - the thread pool hasn't terminated yet, and as such, the thread passively awaits for it to terminate (***wait-path***).
 - **Giving-up** - While waiting, a thread can *give-up* on the executor shutdown operation if:
-    - the thread willing-to-wait timeout expires and returns `false`.
+    - the thread _willing-to-wait_ timeout expires and returns `false`.
 - **Additional notes**:
     - the thread is interrupted while waiting and throws an `InterruptedException`.
     - a thread that specifies a timeout of *zero* will not wait for the executor to shut down and will return `false`
@@ -754,14 +757,14 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
   is responsible to signal all threads that are waiting for that state to be altered for them to evaluate the state of
   the promise and act accordingly.
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `cancel`, expecting the task to be cancelled.
 - A thread calls `resolve`, expecting the task to be resolved with the given value.
 - A thread calls `reject`, expecting the task to be rejected with the given exception.
 - A thread calls `get`, expecting to retrieve the result of the task execution.
 
-### Conditions of execution:
+### Conditions of execution
 
 `get`:
 
@@ -874,9 +877,9 @@ The following image shows a possible representation of the previous states in a 
 
 | ![Cyclic Barrier](src/main/resources/set2/cyclic-barrier.png) |
 |:-------------------------------------------------------------:|
-|                   *Cyclic Barrier example*                    |
+|                    *CyclicBarrier example*                    |
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `await`, and passively awaits indefinitely for the other threads to reach the barrier, in order for it
   to be opened and the runnable task to be executed if it exists. Returns the arrival index of this thread where:
@@ -890,7 +893,7 @@ The following image shows a possible representation of the previous states in a 
   be opened.
 - A thread calls `isBroken`, and retrieves information about whether the barrier has been broken or not.
 
-### Conditions of execution:
+### Conditions of execution
 
 `await`:
 
@@ -959,7 +962,7 @@ as well as how a value is represented.
 | ![Thread-Safe Container before consumption](src/main/resources/set2/thread-safe-container-before-consumption.png) |
 |:-----------------------------------------------------------------------------------------------------------------:|
 |  ![Thread-Safe Container after consumption](src/main/resources/set2/thread-safe-container-after-consumption.png)  |
-|                                          *Thread-Safe Container example*                                          |
+|                                           *ThreadSafeContainer example*                                           |
 
 ### Style of synchronization
 
@@ -974,12 +977,12 @@ an [AtomicInteger](https://docs.oracle.com/javase/8/docs/api/java/util/concurren
 An implementation that is not *thread-safe*, and that was the starting point of this implementation, can be
 seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeContainer.kt).
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `consume`, and consumes a value from the container, if there is any left or returns `null` if
   the container is empty.
 
-### Conditions of execution:
+### Conditions of execution
 
 `consume`:
 
@@ -1044,12 +1047,12 @@ thread-safety and visibility without incurring unnecessary overhead.
 An implementation that is not thread-safe, and that was the starting point of this implementation,
 can be seen [here](src/main/kotlin/pt/isel/pc/problemsets/unsafe/UnsafeUsageCountedHolder.kt).
 
-### Normal execution:
+### Normal execution
 
 - A thread calls `tryStartUse`, and retrieves the value if it is not closed, incrementing the usage counter.
 - A thread calls `endUse`, and decrements the usage counter of the value, closing it if the counter reaches zero.
 
-### Conditions of execution:
+### Conditions of execution
 
 `tryStartUse`:
 
@@ -1724,16 +1727,16 @@ These issues are described below.
 
 - The second issue was found in [ShutdownTests](src/test/kotlin/pt/isel/pc/problemsets/set3/ShutdownTests.kt) when
   running the test that uses an **external process** to run the application. The test was failing because when
-  `sendSignal` from [TestServer.kt](src/test/kotlin/pt/isel/pc/problemsets/utils/TestServer.kt)
+  `sendSignal` from [TestServer](src/test/kotlin/pt/isel/pc/problemsets/utils/TestServer.kt)
   is called, the server process is not terminated.
   This termination is not happening since the registered `shutdown hook` in
   the [App.kt](src/main/kotlin/pt/isel/pc/problemsets/set3/base/App.kt) was not being called.
   Therefore, the server wasn't being gracefully shutdown as expected, making the test fail by timeout.
-  This timeout expires because each [TestClient.kt](src/test/kotlin/pt/isel/pc/problemsets/utils/TestClient.kt) 
+  This timeout expires because each [TestClient](src/test/kotlin/pt/isel/pc/problemsets/utils/TestClient.kt) 
   has a timeout ([SO_TIMEOUT](https://docs.oracle.com/javase/8/docs/api/java/net/SocketOptions.html#SO_TIMEOUT)) 
   to read from its socket channel.
   It is possible that this issue could be related to the **operating system** used to run the tests since the
-  `destroy` method from the `Process` class is
+  `destroy` method implementation from the `Process` class is
   [application dependent](https://docs.oracle.com/javase/8/docs/api/java/lang/Process.html#destroy--), and as such,
   is not consistent across different platforms and JVM implementations.
   Nonetheless, this issue was marked as **unsolved** due to the lack of tools and knowledge for its proper resolution.
@@ -1750,7 +1753,7 @@ of the application.
 For the client demonstration,
 the [Termius](https://termius.com/) application was used to establish a `TCP/IP` connection to the server.
 The provided video showcases the interaction of three clients using the application.
-Later one, one of the clients explicitly requests to exit
+Later on, one of the clients explicitly requests to exit
 while the other two are disconnected due to a termination request sent to the server shortly after.
 
 https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/2be12b52-e29e-49f1-9cd1-72973d50e711

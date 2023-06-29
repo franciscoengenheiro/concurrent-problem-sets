@@ -119,7 +119,7 @@ class CoroutineScopeAndCancellationTests {
                             delay(1000)
                         }
                     } catch (ex: CancellationException) {
-                        logger.info("Caught CancellationException")
+                        logger.info("Caught CancellationException A")
                         throw RuntimeException("Reacting to cancellation")
                     }
                 }
@@ -128,7 +128,7 @@ class CoroutineScopeAndCancellationTests {
                         delay(1000)
                         logger.info("After delay on second child coroutine")
                     } catch (ex: CancellationException) {
-                        logger.info("Caught CancellationException")
+                        logger.info("Caught CancellationException B")
                         throw ex
                     }
                 }

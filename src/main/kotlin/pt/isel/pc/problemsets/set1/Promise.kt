@@ -59,7 +59,7 @@ class Promise<T> : Future<T> {
 
     /**
      * Attempts to cancel execution of this task. This attempt will fail if the task has already completed,
-     * has already been cancelled, or could not be cancelled for some other reason.
+     * has already been cancelled, or could not be canceled for some other reason.
      * If successful, and this task has not started when cancel is called, this task should never run.
      * If the task has already started, then the [mayInterruptIfRunning] parameter determines whether the
      * thread executing this task should be interrupted in an attempt to stop the task.
@@ -68,7 +68,8 @@ class Promise<T> : Future<T> {
      * @param mayInterruptIfRunning true, if the thread executing this task should be interrupted,
      * otherwise, in-progress tasks are allowed to complete.
      * In the current implementation, this parameter is ignored.
-     * @return false if the task could not be cancelled, typically because it has already completed normally.
+     * @return false if the task could not be cancelled - typically because it has already completed normally - or
+     * true otherwise.
      */
     override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
         lock.withLock {
@@ -182,7 +183,7 @@ class Promise<T> : Future<T> {
      * Evaluates the current state of the task and returns the result
      * since it was marked as completed.
      * This method should only be called when the task is in a completed state and in a
-     * thread-safe environment.
+     * thread-safe environment since it consults the internal state of the promise.
      * @throws CancellationException if the task was cancelled.
      * @throws ExecutionException if the task was aborted or cancelled.
      * @throws IllegalStateException if the task is still pending.
@@ -195,6 +196,6 @@ class Promise<T> : Future<T> {
             currentState.result as T
         is State.Rejected -> throw ExecutionException(currentState.throwable)
         is State.Cancelled -> throw CancellationException()
-        is State.Pending -> throw IllegalStateException("Illegal state: $currentState")
+        is State.Pending -> throw IllegalStateException("Task is still pending")
     }
 }

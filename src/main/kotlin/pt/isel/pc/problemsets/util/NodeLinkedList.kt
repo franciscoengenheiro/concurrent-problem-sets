@@ -100,7 +100,7 @@ class NodeLinkedList<T> {
 
     /**
      * Checks if the head node satisfies the given condition.
-     * @param cond the condition to be applied to the head node.
+     * @param cond the condition to be applied to the head node value.
      * @return true if the head node satisfies the condition, false otherwise.
      */
     inline fun headCondition(cond: (T) -> Boolean): Boolean = headValue?.let { cond(it) } == true
