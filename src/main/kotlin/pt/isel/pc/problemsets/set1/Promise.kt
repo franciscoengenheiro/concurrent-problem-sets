@@ -20,10 +20,11 @@ import kotlin.concurrent.withLock
  * [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise)
  * pattern in Kotlin, using the Monitor synchronization style.
  * All methods are thread-safe to ensure only one thread can access or alter the state of the promise at a given time.
- * The promise is initially in the **Pending** [State], and it can be set to:
- * - **Resolved** with the [resolve] method
- * - **Rejected** with the [reject] method
- * - **Cancelled** with the [cancel] method.
+ * The promise is initially in **[State.Pending]**, and it can be set to:
+ * - **[State.Started]** with the [start] method
+ * - **[State.Resolved]** with the [resolve] method
+ * - **[State.Rejected]** with the [reject] method
+ * - **[State.Cancelled]** with the [cancel] method.
  *
  * Once the promise is in a completed state, it cannot be changed.
  */
@@ -38,6 +39,12 @@ class Promise<T> : Future<T> {
          * Represents the state where the computation is pending and has not yet produced a result.
          */
         object Pending : State()
+
+        /**
+         * Represents the state where the computation has started but has not yet produced a result.
+         * This optional state is used to prevent the computation from being cancelled after it has started.
+         */
+        object Started : State()
 
         /**
          * Represents the state where the computation has successfully finished and produced a result.
@@ -58,8 +65,8 @@ class Promise<T> : Future<T> {
     }
 
     /**
-     * Attempts to cancel execution of this task. This attempt will fail if the task has already completed,
-     * has already been cancelled, or could not be canceled for some other reason.
+     * Attempts to cancel execution of this task. This attempt will fail if the task has already completed
+     * was started, has already been cancelled, or could not be canceled for some other reason.
      * If successful, and this task has not started when cancel is called, this task should never run.
      * If the task has already started, then the [mayInterruptIfRunning] parameter determines whether the
      * thread executing this task should be interrupted in an attempt to stop the task.
@@ -92,7 +99,7 @@ class Promise<T> : Future<T> {
      * Completion may be due to normal termination, an exception, or cancellation.
      * In all of these cases, this method will return true.
      */
-    override fun isDone(): Boolean = lock.withLock { state !is State.Pending }
+    override fun isDone(): Boolean = lock.withLock { state !is State.Pending && state !is State.Started }
 
     /**
      * Waits as long as necessary for the computation to complete, and then retrieves its result.
@@ -123,15 +130,15 @@ class Promise<T> : Future<T> {
     )
     override fun get(timeout: Long, unit: TimeUnit): T {
         lock.withLock {
-            // fast-path: the promise was already completed
+            // fast-path A: the promise was already completed
             if (isDone) {
                 return evaluateCompletedState()
             }
-            // Do not wait if the promise wasn't completed
+            // fast-path B: the timeout is zero
             if (TimeoutHelper.noWait(timeout)) {
                 throw TimeoutException()
             }
-            // wait-path
+            // wait-path:
             val deadline = start(timeout, unit)
             var remaining = remainingUntil(deadline)
             while (true) {
@@ -140,7 +147,6 @@ class Promise<T> : Future<T> {
                 } catch (e: InterruptedException) {
                     if (isDone) {
                         // Arm the interrupt flag in order to not lose the interruption request
-                        // If this thread is blocked again it will throw an InterruptedException
                         Thread.currentThread().interrupt()
                         return evaluateCompletedState()
                     }
@@ -160,23 +166,33 @@ class Promise<T> : Future<T> {
     }
 
     /**
+     * Marks this task as started.
+     * This state is optional and is used to indicate that the task has started
+     * but has not yet produced a result.
+     * @throws IllegalStateException if the promise is already started.
+     */
+    fun start() = lock.withLock {
+        check(state is State.Pending) { "The promise was already started" }
+        state = State.Started
+    }
+
+    /**
      * Resolves this promise with the given [value].
+     * @throws IllegalStateException if the promise is already completed.
      */
     fun resolve(value: T) = lock.withLock {
-        if (state is State.Pending) {
-            state = State.Resolved(value)
-            condition.signalAll()
-        }
+        check(state is State.Pending || state is State.Started) { "Cannot a resolve a completed promise" }
+        state = State.Resolved(value)
+        condition.signalAll()
     }
 
     /**
      * Rejects this promise with the given [reason].
      */
     fun reject(reason: Throwable) = lock.withLock {
-        if (state is State.Pending) {
-            state = State.Rejected(reason)
-            condition.signalAll()
-        }
+        check(state is State.Pending || state is State.Started) { "Cannot a reject a completed promise" }
+        state = State.Rejected(reason)
+        condition.signalAll()
     }
 
     /**
@@ -186,16 +202,17 @@ class Promise<T> : Future<T> {
      * thread-safe environment since it consults the internal state of the promise.
      * @throws CancellationException if the task was cancelled.
      * @throws ExecutionException if the task was aborted or cancelled.
-     * @throws IllegalStateException if the task is still pending.
+     * @throws IllegalStateException if the task is still pending or still executing.
      * @return the result of the completed task.
      */
     @Throws(CancellationException::class, ExecutionException::class, IllegalStateException::class)
     private fun evaluateCompletedState() = when (val currentState = state) {
+        is State.Pending -> throw IllegalStateException("Task is still pending")
+        is State.Started -> throw IllegalStateException("Task is still executing")
+        is State.Cancelled -> throw CancellationException()
         is State.Resolved ->
             @Suppress("UNCHECKED_CAST")
             currentState.result as T
         is State.Rejected -> throw ExecutionException(currentState.throwable)
-        is State.Cancelled -> throw CancellationException()
-        is State.Pending -> throw IllegalStateException("Task is still pending")
     }
 }

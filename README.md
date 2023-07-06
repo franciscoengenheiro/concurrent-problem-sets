@@ -73,6 +73,11 @@ These same threads will delegate the completion of the requests to another threa
 while keeping a local reference to it.
 This in turn will enable the synchronizer to resume its functions without waiting for the requests to be completed.
 
+The mentioned **local reference** is what enables the thread to not lose track of the synchronizer state that
+it was waiting upon.
+Whereas, in the monitor-style synchronization, such state could be potentially lost since the thread, 
+when awakened, has to recheck the state of the synchronizer which could have changed in the meantime.
+
 For general purpose, the kernel-style is the preferred one,
 since it is more flexible and easier to implement.
 However, the choice will always depend on the context of the synchronization problem.
@@ -628,8 +633,8 @@ The executor has a lifecycle that can be described by the following states:
   terminate if no more work is available.
 - In this call, a signal is sent to all the threads waiting for the executor to shut down if the number of active
   worker threads is already **zero**.
-  Such signal is needed since there's not a last worker thread to signal the other threads waiting for the executor 
-  to shut down.
+  Such signal is needed since there will not be a last worker thread to signal the other threads waiting for the executor 
+  to shut down, leaving them waiting indefinitely.
 
 `awaitTermination`:
 
@@ -733,6 +738,7 @@ class Promise<T> : Future<T> {
     override fun get(timeout: Long, unit: TimeUnit): T
     fun resolve(result: T)
     fun reject(ex: Throwable)
+    fun start()
 }
 ```
 
@@ -745,9 +751,10 @@ The promise has a lifecycle that can be described by the following states:
 |                       *Promise states*                        |
 
 - **Pending** - the promise is pending and has not yet produced a result.
+- **Started** - the promise has started the computation and cannot be cancelled.
 - **Resolved** - the computation has completed successfully with the given value.
 - **Rejected** - the computation has completed with a failure due to an exception.
-- **Cancelled** - promise was cancelled before it could be completed.
+- **Cancelled** - promise was cancelled before it could be explicitly resolved or rejected.
 
 Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 
@@ -760,6 +767,7 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
 ### Normal execution
 
 - A thread calls `cancel`, expecting the task to be cancelled.
+- A thread calls `start`, expecting the task to be marked as started, disallowing its cancellation.
 - A thread calls `resolve`, expecting the task to be resolved with the given value.
 - A thread calls `reject`, expecting the task to be rejected with the given exception.
 - A thread calls `get`, expecting to retrieve the result of the task execution.
@@ -778,7 +786,7 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
     - the thread is interrupted while waiting and throws an `InterruptedException`.
 - **Additional notes**:
     - A thread that specifies a timeout of *zero* and the promise is not yet ready, it will not wait for the promise
-      to be completed and will throw a `TimeoutException`.
+      to be completed and will throw a `TimeoutException`. 
     - if a task has been completed:
         - but was cancelled, throws a `CancellationException`.
         - but was rejected, throws an `ExecutionException`.
@@ -1722,7 +1730,7 @@ These issues are described below.
   factor.
   This issue was solved by adding a small `delay` after sending the 
   message to the client, and before closing its socket channel on the server's side.
-  It's important to mention this solution might not be ideal, but it was the only one found, and as such, the issue
+  It's important to mention this solution might not be ideal, but it was the only one found, and as such the issue
   was marked as **resolved**.
 
 - The second issue was found in [ShutdownTests](src/test/kotlin/pt/isel/pc/problemsets/set3/ShutdownTests.kt) when
@@ -1737,7 +1745,7 @@ These issues are described below.
   to read from its socket channel.
   It is possible that this issue could be related to the **operating system** used to run the tests since the
   `destroy` method implementation from the `Process` class is
-  [application dependent](https://docs.oracle.com/javase/8/docs/api/java/lang/Process.html#destroy--), and as such,
+  [application dependent](https://docs.oracle.com/javase/8/docs/api/java/lang/Process.html#destroy--), and as such 
   is not consistent across different platforms and JVM implementations.
   Nonetheless, this issue was marked as **unsolved** due to the lack of tools and knowledge for its proper resolution.
 

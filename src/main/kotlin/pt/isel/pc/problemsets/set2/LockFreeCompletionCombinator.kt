@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A [CompletionCombinator] that minimizes the usage of locks to synchronize access to shared state.
- * It uses the Java Memory Model to ensure that the shared state is accessed in a thread-safe manner.
+ * It uses the Java Memory Model semantics to ensure that the shared state is accessed in a thread-safe manner.
  */
 class LockFreeCompletionCombinator : CompletionCombinator {
 
@@ -63,7 +63,7 @@ class LockFreeCompletionCombinator : CompletionCombinator {
         return futureToReturn
     }
 
-    @Throws(IllegalArgumentException::class)
+    @Throws(AggregationError::class, IllegalArgumentException::class)
     override fun <T> any(inputStages: List<CompletionStage<T>>): CompletionStage<T> {
         require(inputStages.isNotEmpty()) { "inputStages must not be empty" }
         val futureToReturn = CompletableFuture<T>()

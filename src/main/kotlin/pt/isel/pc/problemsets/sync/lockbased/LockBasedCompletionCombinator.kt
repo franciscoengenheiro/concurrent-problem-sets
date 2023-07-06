@@ -44,7 +44,8 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                 // Reminder: a future can only be completed with a value or an exception,
                 // outside the lock, because the completion stage may have an arbitrary number
                 // of callbacks that execute after its completion, and we do not know how long they will take
-                // to execute. If we completed the future inside the lock, we would be holding the lock
+                // to execute.
+                // If we completed the future inside the lock, we could be holding the lock
                 // indefinitely.
                 if (maybeSuccess != null) {
                     futureToReturn.complete(maybeSuccess)
@@ -88,15 +89,14 @@ class LockBasedCompletionCombinator : CompletionCombinator {
                 // Reminder: a future can only be completed with a value or an exception,
                 // outside the lock, because the completion stage may have an arbitrary number
                 // of callbacks that execute after its completion, and we do not know how long they will take
-                // to execute. If we completed the future inside the lock, we would be holding the lock
-                // indefinitely.
+                // to execute. If we completed the future inside the lock, we could be holding the lock
                 if (maybeSuccess != null) {
                     futureToReturn.complete(maybeSuccess)
                 } else if (maybeError != null) {
-                    val catchedThrowables = maybeError
-                    requireNotNull(catchedThrowables)
+                    val observedThrowables = maybeError
+                    requireNotNull(observedThrowables)
                     futureToReturn.completeExceptionally(
-                        AggregationError("All futures failed", catchedThrowables)
+                        AggregationError("All futures failed", observedThrowables)
                     )
                 }
             }

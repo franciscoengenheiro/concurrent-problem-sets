@@ -35,11 +35,56 @@ internal class PromiseTests {
     }
 
     @Test
+    fun `A promise is not done once marked as started`() {
+        val promise = Promise<String>()
+        promise.start()
+        assertFalse(promise.isCancelled)
+        assertFalse(promise.isDone)
+    }
+
+    @Test
+    fun `A started promise cannot be cancelled`() {
+        val promise = Promise<String>()
+        promise.start()
+        assertFalse(promise.cancel(true))
+        assertFalse(promise.isCancelled)
+        assertFalse(promise.isDone)
+    }
+
+    @Test
     fun `A promise is done when rejected`() {
         val promise = Promise<String>()
         promise.reject(Exception())
         assertFalse(promise.isCancelled)
         assertTrue(promise.isDone)
+    }
+
+    @Test
+    fun `Cannot start a promise twice`() {
+        val promise = Promise<String>()
+        promise.start()
+        assertFailsWith<IllegalStateException> {
+            promise.start()
+        }
+    }
+
+    @Test
+    fun `Cannot resolve a promise twice`() {
+        val value = "value"
+        val promise = Promise<String>()
+        promise.resolve(value)
+        assertFailsWith<IllegalStateException> {
+            promise.resolve(value)
+        }
+    }
+
+    @Test
+    fun `Cannot reject a promise twice`() {
+        val promise = Promise<String>()
+        promise.reject(Exception())
+        assertFailsWith<IllegalStateException> {
+            promise.reject(Exception())
+        }
     }
 
     @Test
@@ -51,14 +96,18 @@ internal class PromiseTests {
     }
 
     @Test
-    fun `A promise should be able to be cancelled before resolving`() {
-        val promise = Promise<String>()
-        assertTrue(promise.cancel(true))
-        promise.resolve("value")
+    fun `Can only cancel a promise in the pending state`() {
+        val promiseA = Promise<String>()
+        assertTrue(promiseA.cancel(true))
         assertFailsWith<CancellationException> {
-            promise.get()
+            promiseA.get()
         }
+        val promiseB = Promise<String>()
+        promiseB.resolve("value")
+        assertFalse(promiseB.cancel(true))
+        assertFalse(promiseB.isCancelled)
     }
+
 
     @Test
     fun `A promise cannot be cancelled after it is resolved`() {

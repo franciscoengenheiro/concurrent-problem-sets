@@ -85,7 +85,7 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
             return suspendCancellableCoroutine { continuation ->
                 val producerRequest = ProducerRequest(message, continuation)
                 producerRequestNode = producerQueue.enqueue(producerRequest)
-                lock.unlock()
+                lock.unlock() // unlock the lock before suspending
             }
         } catch (ex: CancellationException) {
             lock.withLock {
@@ -139,14 +139,13 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
         }
         var consumerRequestNode: NodeLinkedList.Node<ConsumerRequest<T>>? = null
         return try {
-            // the request could be completed even though the timeout was reached
             withTimeoutOrNull(timeout) {
                 suspendCancellableCoroutine { continuation ->
                     // suspend-path: if there is no message available or there are pending consumer requests, place
                     // the continuation in the consumer requests queue and suspend the coroutine until it can resume
                     val consumerRequest: ConsumerRequest<T> = ConsumerRequest(continuation)
                     consumerRequestNode = consumerQueue.enqueue(consumerRequest)
-                    lock.unlock()
+                    lock.unlock() // unlock the lock before suspending
                 }
             } ?: messageOrException(consumerRequestNode, TimeoutException())
         } catch (ex: CancellationException) {
@@ -165,7 +164,7 @@ class AsyncMessageQueue<T>(private val capacity: Int) {
     private fun messageOrException(
         observedConsumerRequestNode: NodeLinkedList.Node<ConsumerRequest<T>>?,
         exceptionToThrow: Exception
-    ): T & Any {
+    ): T {
         lock.withLock {
             if (observedConsumerRequestNode != null) {
                 val consumerRequest = observedConsumerRequestNode.value

@@ -1,11 +1,11 @@
 package pt.isel.pc.problemsets.sync.combinator
 
 /**
- * Represents an error that aggregates a list of causes.
+ * Represents an error that aggregates a list of [Throwable]s.
  * Provides a [throwables] property to be able to access the list of causes used
  * to construct this error.
- * @param message the message of the error.
- * @param causes the list of causes that were wrapped in this error.
+ * @param message the description of the error.
+ * @param causes the list of [Throwable]s that were wrapped in this error.
  */
 class AggregationError(
     message: String,

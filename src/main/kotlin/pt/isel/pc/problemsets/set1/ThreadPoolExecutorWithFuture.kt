@@ -64,8 +64,6 @@ class ThreadPoolExecutorWithFuture(
     /**
      * Initiates an orderly shutdown in which previously submitted work items are executed,
      * but no new work items will be accepted.
-     * This method awakes all worker threads that were waiting for
-     * work in order to clear the queue of work items or to terminate.
      * Invocation has no additional effect if already shut down.
      */
     fun shutdown() = lock.withLock {
@@ -184,11 +182,14 @@ class ThreadPoolExecutorWithFuture(
      */
     private fun getNextWorkItem(timeout: Long): GetWorkItemResult {
         lock.withLock {
-            // fast-path
+            // fast-path A: there is a work item in the queue
             if (requestQueue.notEmpty) {
-                return WorkItem(requestQueue.pull().value, timeout)
+                return WorkItem(requestQueue.pull().value, timeout).also {
+                    // mark the work item future representation as started, since it was taken from the queue
+                    it.workItem.result.start()
+                }
             }
-            // Terminate this worker thread if the thread pool is in shutdown mode
+            // fast-path B: terminate this worker thread if the thread pool is in shutdown mode
             // and there are no more work items in the queue
             if (inShutdown) {
                 nOfWorkerThreads -= 1
@@ -198,7 +199,7 @@ class ThreadPoolExecutorWithFuture(
                 }
                 return Exit
             }
-            // If timeout is 0, the worker thread should be terminated immediately
+            // fast-path C: if timeout is 0, the worker thread should be terminated immediately
             // and not wait for a work item to be placed in the queue
             if (timeout == 0L) {
                 return Exit
@@ -218,7 +219,10 @@ class ThreadPoolExecutorWithFuture(
                 if (requestQueue.notEmpty) {
                     // if a worker thread was signal with work in the queue,
                     // the counter was decremented by the thread that placed the work item already
-                    return WorkItem(requestQueue.pull().value, remainingNanos)
+                    return WorkItem(requestQueue.pull().value, remainingNanos).also {
+                        // mark the work item future representation as started, since it was taken from the queue
+                        it.workItem.result.start()
+                    }
                 }
                 if (inShutdown) {
                     nOfWaitingWorkerThreads -= 1
@@ -246,6 +250,10 @@ class ThreadPoolExecutorWithFuture(
      * @param firstRequest the first [ExecutionRequest] to be executed by this worker thread.
      */
     private fun workerLoop(firstRequest: ExecutionRequest<*>) {
+        // the first request was given directly to this worker thread,
+        // so it should be marked as started (to disable caller cancellation)
+        // since it is about to be executed
+        firstRequest.result.start()
         var currentRequest = firstRequest
         var remainingNanos = keepAliveTime.inWholeNanoseconds
         while (true) {
