@@ -32,6 +32,7 @@ suspend fun AsynchronousServerSocketChannel.acceptSuspend(): AsynchronousSocketC
                 null,
                 object : CompletionHandler<AsynchronousSocketChannel, Unit?> {
                     override fun completed(result: AsynchronousSocketChannel, attachment: Unit?) {
+                        wasCompleted.set(true)
                         continuation.resume(result)
                     }
 

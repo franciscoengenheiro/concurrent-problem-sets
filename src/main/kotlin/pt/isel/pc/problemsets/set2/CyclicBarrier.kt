@@ -98,7 +98,7 @@ class CyclicBarrier(private val parties: Int, private val barrierAction: Runnabl
                         // the barrier was not opened nor broken, but this thread gave up, so the
                         // barrier must be broken by this thread
                         breakBarrier()
-                        throw InterruptedException()
+                        throw ex
                     }
                 }
                 // Check if another thread broke the barrier

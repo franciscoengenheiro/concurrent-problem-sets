@@ -103,7 +103,7 @@ internal class PromiseTests {
             promiseA.get()
         }
         val promiseB = Promise<String>()
-        promiseB.resolve("value")
+        promiseB.start()
         assertFalse(promiseB.cancel(true))
         assertFalse(promiseB.isCancelled)
     }

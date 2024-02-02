@@ -1,5 +1,9 @@
 package pt.isel.pc.problemsets.set2
 
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import pt.isel.pc.problemsets.utils.MultiThreadTestHelper
@@ -73,7 +77,7 @@ internal class ThreadSafeCountedHolderTests {
     }
 
     @RepeatedTest(3)
-    fun `Several thread try to close a resource`() {
+    fun `Several threads try to close a resource`() {
         val resource = TestResource()
         val holder = ThreadSafeCountedHolder(resource)
         val testHelper = MultiThreadTestHelper(10.seconds)
@@ -95,12 +99,12 @@ internal class ThreadSafeCountedHolderTests {
         assertEquals(nrThreads - 1, exceptionCounter.get())
     }
 
-    @Test
+    @RepeatedTest(3)
     fun `Several threads use the resource and try to end it's usage several times, always succeding`() {
         val resource = TestResource()
         val holder = ThreadSafeCountedHolder(resource)
         val testHelper = MultiThreadTestHelper(10.seconds)
-        val nrThreads = 10
+        val nrThreads = 10 randomTo 24
         val exceptionCounter = AtomicInteger(0)
         testHelper.createAndStartMultipleThreads(nrThreads) { _, _ ->
             val value = holder.tryStartUse()
@@ -115,12 +119,12 @@ internal class ThreadSafeCountedHolderTests {
         assertEquals(0, exceptionCounter.get())
     }
 
-    @Test
+    @RepeatedTest(3)
     fun `A thread uses the resource several times and for the same amount of times threads try to end it's usage`() {
         val resource = TestResource()
         val holder = ThreadSafeCountedHolder(resource)
         val testHelper = MultiThreadTestHelper(10.seconds)
-        val nrOfUsages = 10
+        val nrOfUsages = 500 randomTo 1000
         val exceptionCounter = AtomicInteger(0)
         // this thread uses the value several times
         val th1 = testHelper.createAndStartThread {
@@ -138,7 +142,7 @@ internal class ThreadSafeCountedHolderTests {
             }
         }
         testHelper.join()
-        assertEquals(0, exceptionCounter.get())
+        assertEquals(nrOfUsages, exceptionCounter.get())
         // ensure the resource is only closed once
         assertEquals(1, resource.closedCounter.get())
         assertFailsWith<IllegalStateException> {

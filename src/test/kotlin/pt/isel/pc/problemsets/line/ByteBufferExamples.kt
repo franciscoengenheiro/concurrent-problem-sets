@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class ByteBufferExamples {
 
@@ -60,7 +61,7 @@ class ByteBufferExamples {
         // (bytes[2], bytes[3]) -> chars[2]
         bytes.limit(4)
         result = decoder.decode(bytes, chars, false)
-        Assertions.assertFalse(result.isError)
+        assertFalse(result.isError)
         assertEquals(4, bytes.position(), "two bytes are consumed")
         assertEquals(3, chars.position(), "one char is produced")
         assertEquals('á', chars.get(2))

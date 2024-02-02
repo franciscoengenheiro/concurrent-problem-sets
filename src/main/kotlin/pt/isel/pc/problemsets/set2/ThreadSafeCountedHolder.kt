@@ -2,6 +2,7 @@ package pt.isel.pc.problemsets.set2
 
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * A thread-safe holder that has an internal counter that keeps track of how many times the value was used.
@@ -10,8 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * @param value the value to be held.
  */
 class ThreadSafeCountedHolder<T : Closeable>(value: T) {
-    @Volatile
-    private var value: T? = value
+    private val value: AtomicReference<T> = AtomicReference(value)
 
     // the instance creation counts as one usage
     private val useCounter: AtomicInteger = AtomicInteger(1)
@@ -35,7 +35,7 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
                 return null
             }
             if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
-                return value
+                return value.get()
             }
             // retry
         }
@@ -65,12 +65,18 @@ class ThreadSafeCountedHolder<T : Closeable>(value: T) {
             if (useCounter.compareAndSet(observedCounter, newCounterValue)) {
                 val observedCounterAfterDec = useCounter.get()
                 if (observedCounterAfterDec == 0) {
-                    // return early if the value is already null
-                    value ?: return
-                    value?.close()
-                    value = null
+                    while(true) {
+                        val observedValue = value.get()
+                            ?: // the value was already closed by another thread in the meantime
+                            return
+                        if (value.compareAndSet(observedValue, null)) {
+                            // the value will be closed by this thread
+                            observedValue.close()
+                            return
+                        }
+                        // retry
+                    }
                 }
-                return
             }
             // retry
         }

@@ -2,8 +2,6 @@
 
 > This document contains the relevant observations and technical documentation of the problem sets resolution.
 
-- Student: `49428 - Francisco Engenheiro - LEIC41D`
-
 ## Table of Contents
 
 1. [Background concepts and definitions](#background-concepts-and-definitions)
@@ -75,7 +73,7 @@ This in turn will enable the synchronizer to resume its functions without waitin
 
 The mentioned **local reference** is what enables the thread to not lose track of the synchronizer state that
 it was waiting upon.
-Whereas, in the monitor-style synchronization, such state could be potentially lost since the thread, 
+Whereas, in the monitor-style synchronization, such state could be potentially lost since the thread,
 when awakened, has to recheck the state of the synchronizer which could have changed in the meantime.
 
 For general purpose, the kernel-style is the preferred one,
@@ -313,6 +311,8 @@ suspend fun method() {
 
 ## Set-1
 
+[EN](./docs/en/set1-en.pdf) | [PT](./docs/pt/set1-pt.pdf)
+
 ### NAryExchanger
 
 [Implementation](src/main/kotlin/pt/isel/pc/problemsets/set1/NAryExchanger.kt) | [Tests](src/test/kotlin/pt/isel/pc/problemsets/set1/NAryExchangerTests.kt)
@@ -400,7 +400,8 @@ This synchronizer is a blocking queue,
 similar to
 an [LinkedBlockingQueue](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/LinkedBlockingQueue.html)
 that allows for multiple threads to concurrently enqueue and dequeue messages.
-It also allows for each thread to specify a _willing-to-wait_ timeout for the enqueue and dequeue operations to complete.
+It also allows for each thread to specify a _willing-to-wait_ timeout for the enqueue and dequeue operations to
+complete.
 
 The term *blocking* refers to the fact that the queue is bounded,
 and as such, if a thread tries to enqueue a message when the queue is full,
@@ -633,14 +634,16 @@ The executor has a lifecycle that can be described by the following states:
   terminate if no more work is available.
 - In this call, a signal is sent to all the threads waiting for the executor to shut down if the number of active
   worker threads is already **zero**.
-  Such signal is needed since there will not be a last worker thread to signal the other threads waiting for the executor 
+  Such signal is needed since there will not be a last worker thread to signal the other threads waiting for the
+  executor
   to shut down, leaving them waiting indefinitely.
 
 `awaitTermination`:
 
 - **Paths** - The thread can take two major paths when calling this method:
     - the thread pool has already terminated, and as such, the thread returns `true` immediately (***fast-path***).
-    - the thread pool hasn't terminated yet, and as such, the thread passively awaits for it to terminate (***wait-path***).
+    - the thread pool hasn't terminated yet, and as such, the thread passively awaits for it to terminate (
+      ***wait-path***).
 - **Giving-up** - While waiting, a thread can *give-up* on the executor shutdown operation if:
     - the thread _willing-to-wait_ timeout expires and returns `false`.
 - **Additional notes**:
@@ -786,13 +789,15 @@ Once the *promise* is resolved, rejected or cancelled, it cannot be altered.
     - the thread is interrupted while waiting and throws an `InterruptedException`.
 - **Additional notes**:
     - A thread that specifies a timeout of *zero* and the promise is not yet ready, it will not wait for the promise
-      to be completed and will throw a `TimeoutException`. 
+      to be completed and will throw a `TimeoutException`.
     - if a task has been completed:
         - but was cancelled, throws a `CancellationException`.
         - but was rejected, throws an `ExecutionException`.
         - but was resolved, returns the result of the task execution.
 
 ## Set-2
+
+[EN](./docs/en/set2-en.pdf) | [PT](./docs/pt/set2-pt.pdf)
 
 ### CyclicBarrier
 
@@ -1225,6 +1230,8 @@ all subsequent threads accessing it will see the same value without any synchron
 
 ## Set-3
 
+[EN](./docs/en/set3-en.pdf) | [PT](./docs/pt/set3-pt.pdf)
+
 In this set,
 the main goal is to implement a server chat system with a `TCP/IP` interface for exchanging messages between clients and
 a server.
@@ -1284,7 +1291,7 @@ present in that room.
 
 The commands a client system can send over a `TCP/IP` connection are:
 
-- `/enter <room-name>` - enters the room <room-name>, creating it if necessary.
+- `/enter <room-name>` - enters the room `room-name`, creating it if necessary.
 - `/leave` - leave the room it is in.
 - `/exit` - terminates the connection to the server.
 
@@ -1370,13 +1377,13 @@ Visit this [section](#asynchronous-socket-extension-functions) for more details 
   the [ConnectedClient](src/main/kotlin/pt/isel/pc/problemsets/set3/base/ConnectedClient.kt) class were replaced by
   coroutines.
 - In order to take advantage of the coroutine hierarchy with default cancellation
-  propagation, the read coroutine was made a child of the main coroutine,
-  so that if the read coroutine fails or is canceled, the main
+  propagation, the read coroutine was made a child of the main coroutine.
+  This way, if the read coroutine fails or is canceled, the main
   coroutine is also canceled, and thus, the client coroutine is canceled as well.
 - The application coroutine hierarchy is represented in the following image:
 
   | ![Application Coroutine Hierarchy](src/main/resources/set3/coroutine-hierarchy.png) |
-            |:-----------------------------------------------------------------------------------:|
+  |:-----------------------------------------------------------------------------------:|
   |                          *Application Coroutine Hierarchy*                          |
 
 ### LineParser and LineReader
@@ -1434,13 +1441,15 @@ In the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) clas
   to create a
   [ThreadPoolExecutor](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
   with a fixed number of threads, which is then used to construct:
-    - a [AsynchronousChannelGroup](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousChannelGroup.html)
+    -
+    a [AsynchronousChannelGroup](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousChannelGroup.html)
     to be used by
     the [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) `open`
     method.
-    - a [CoroutineDispatcher](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-dispatcher/index.html)
+    -
+    a [CoroutineDispatcher](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-dispatcher/index.html)
     that provides the **coroutine context** for the `accept coroutine`.
-  
+
   It's also worth mentioning that the executor `shutdown` and `awaitTermination` methods are called in the newly
   added `shutdown` with timeout method, so that the server can terminate gracefully if possible within that
   timeout.
@@ -1463,9 +1472,11 @@ by [Mutex](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/k
 es, which are essentially **suspendable locks**.
 Regarding this modification, it is necessary to make the following remarks:
 
-- A mutex is not a [reentrant lock](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantLock.html, 
+- A mutex is not
+  a [reentrant lock](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantLock.html),
   therefore, the code had to be modified to avoid **deadlock** ocurrences.
-- Not suspending while holding a mutex, commonly known as an **open call**, since the coroutine could hold the lock indefinitely, 
+- Not suspending while holding a mutex, commonly known as an **open call**, since the coroutine could hold the lock
+  indefinitely,
   thus leading to an unnacounted behavior.
 
 The described remarks behavior can be seen [here](src/test/kotlin/pt/isel/pc/problemsets/set3/MutexExampleTests.kt).
@@ -1473,12 +1484,12 @@ The described remarks behavior can be seen [here](src/test/kotlin/pt/isel/pc/pro
 ### Suspendable AutoCloseable Interface
 
 - A [SuspendableAutoCloseable](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableAutoCloseable.kt)
-interface was created to represent an `auto-closeable` resource that can be closed in a **suspendable way**.
+  interface was created to represent an `auto-closeable` resource that can be closed in a **suspendable way**.
   This interface was then implemented by the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt).
-  
-- A [suspendable version](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableExtensions.kt) of the 
-[use](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.io/use.html) function, which is the equivalent of 
-the _try-with-resources_ statement, was also implemented to be inline with the previous interface.
+
+- A [suspendable version](src/main/kotlin/pt/isel/pc/problemsets/set3/solution/SuspendableExtensions.kt) of the
+  [use](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.io/use.html) function, which is the equivalent of
+  the _try-with-resources_ statement in Java, was also implemented to be inline with the previous interface.
 
 ### Preview
 
@@ -1584,7 +1595,8 @@ Both of these request objects have the following properties:
     - the coroutine is not the head of the *producer requests queue*, and as such, the coroutine is suspended until it
       is explicitly resumed (**resume-path**).
 - **Cancellation** - A coroutine that is canceled while suspended in the *producer requests queue* is removed from the
-  queue and resumed with `CancellationException`, unless it was **marked to be resumed** by another coroutine, and as such,
+  queue and resumed with `CancellationException`, unless it was **marked to be resumed** by another coroutine, and as
+  such,
   it will still enqueue the message, but will keep the `CancellationException` in its context.
 
 `dequeue`:
@@ -1615,7 +1627,7 @@ Both of these request objects have the following properties:
       and
       since [suspendCancellableCoroutine](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/suspend-cancellable-coroutine.html)
       was used in the implementation,
-      the coroutine is implicitly resumed with `CancellationException`. 
+      the coroutine is implicitly resumed with `CancellationException`.
       This could lead to a **lost message** because the message was already removed from the queue but the consumer
       coroutine was canceled before it could execute its continuation.
       To solve this,
@@ -1717,18 +1729,18 @@ The more relevant tests are described below.
 
 ### Issues
 
-During the development of the solution and respective tests, some issues were found. 
+During the development of the solution and respective tests, some issues were found.
 These issues are described below.
 
 - The first issue was found in [MessagingTests](src/test/kotlin/pt/isel/pc/problemsets/set3/MessagingTests.kt) when
   stress testing multiple clients sending messages to each other. When a client sends a request to **exit**, the server
   sends an acknowledgment message to the client. However, after writting to the client socket channel, and before the
-  test client read the bytes from its socket, the test client could receive a `ConnectionReset` exception (i.e. thus 
+  test client read the bytes from its socket, the test client could receive a `ConnectionReset` exception (i.e. thus
   failling the test).
   Although the causes of this are unclear,
   it appears that the server closing the socket channel before the client can read the message might be a possible
   factor.
-  This issue was solved by adding a small `delay` after sending the 
+  This issue was solved by adding a small `delay` after sending the
   message to the client, and before closing its socket channel on the server's side.
   It's important to mention this solution might not be ideal, but it was the only one found, and as such the issue
   was marked as **resolved**.
@@ -1740,12 +1752,12 @@ These issues are described below.
   This termination is not happening since the registered `shutdown hook` in
   the [App.kt](src/main/kotlin/pt/isel/pc/problemsets/set3/base/App.kt) was not being called.
   Therefore, the server wasn't being gracefully shutdown as expected, making the test fail by timeout.
-  This timeout expires because each [TestClient](src/test/kotlin/pt/isel/pc/problemsets/utils/TestClient.kt) 
-  has a timeout ([SO_TIMEOUT](https://docs.oracle.com/javase/8/docs/api/java/net/SocketOptions.html#SO_TIMEOUT)) 
+  This timeout expires because each [TestClient](src/test/kotlin/pt/isel/pc/problemsets/utils/TestClient.kt)
+  has a timeout ([SO_TIMEOUT](https://docs.oracle.com/javase/8/docs/api/java/net/SocketOptions.html#SO_TIMEOUT))
   to read from its socket channel.
   It is possible that this issue could be related to the **operating system** used to run the tests since the
   `destroy` method implementation from the `Process` class is
-  [application dependent](https://docs.oracle.com/javase/8/docs/api/java/lang/Process.html#destroy--), and as such 
+  [application-dependent](https://docs.oracle.com/javase/8/docs/api/java/lang/Process.html#destroy--), and as such
   is not consistent across different platforms and JVM implementations.
   Nonetheless, this issue was marked as **unsolved** due to the lack of tools and knowledge for its proper resolution.
 
@@ -1772,3 +1784,14 @@ In the server demonstration, the usage of the application-level supported [comma
 observed.
 
 https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/9dd201d5-e5e5-424b-a3b0-d1770fa45b4e
+
+### Authors
+
+- Francisco Engenheiro - 49428
+
+---
+
+Lisbon Institute of Engineering<br>
+Degree in Computer Science and Engineering<br>
+Concurrent Programming<br>
+Summer Semester of 2022/2023
