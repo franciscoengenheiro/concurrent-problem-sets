@@ -1437,17 +1437,13 @@ were made:
 
 In the [Server](src/main/kotlin/pt/isel/pc/problemsets/set3/base/Server.kt) class:
 
-- A parameter that represents the `number of threads` was added to the constructor. The same parameter is used
-  to create a
-  [ThreadPoolExecutor](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
+- A parameter that represents the `number of threads` was added to the constructor. The same parameter is used to create a [ThreadPoolExecutor](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
   with a fixed number of threads, which is then used to construct:
-    -
-    a [AsynchronousChannelGroup](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousChannelGroup.html)
+    - a [AsynchronousChannelGroup](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousChannelGroup.html)
     to be used by
     the [AsynchronousServerSocketChannel](https://docs.oracle.com/javase/8/docs/api/java/nio/channels/AsynchronousServerSocketChannel.html) `open`
     method.
-    -
-    a [CoroutineDispatcher](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-dispatcher/index.html)
+    - a [CoroutineDispatcher](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/-coroutine-dispatcher/index.html)
     that provides the **coroutine context** for the `accept coroutine`.
 
   It's also worth mentioning that the executor `shutdown` and `awaitTermination` methods are called in the newly
