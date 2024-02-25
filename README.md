@@ -1,4 +1,4 @@
-# Concurrent Programming - Summer 22/23
+# Concurrent Programming
 
 > This document contains the relevant observations and technical documentation of the problem sets resolution.
 
@@ -1787,7 +1787,7 @@ https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/10118
 
 ---
 
-Lisbon Institute of Engineering<br>
-Degree in Computer Science and Engineering<br>
+Instituto Superior de Engenharia de Lisboa<br>
+BSc in Computer Science and Engineering<br>
 Concurrent Programming<br>
 Summer Semester of 2022/2023
