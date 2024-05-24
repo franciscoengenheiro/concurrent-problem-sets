@@ -1772,14 +1772,14 @@ The provided video showcases the interaction of three clients using the applicat
 Later on, one of the clients explicitly requests to exit
 while the other two are disconnected due to a termination request sent to the server shortly after.
 
-<video src=https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/2be12b52-e29e-49f1-9cd1-72973d50e711></video>
+https://github.com/franciscoengenheiro/concurrent-problem-sets/assets/101189781/ac3c5680-5bd5-445f-bde9-220b3c8a8226
 
 ### Server
 
 In the server demonstration, the usage of the application-level supported [commands](#additional-functionality) can be
 observed.
 
-<video src=https://github.com/isel-leic-pc/s2223-2-leic41d-FranciscoEngenheiro/assets/101189781/9dd201d5-e5e5-424b-a3b0-d1770fa45b4e></video>
+https://github.com/franciscoengenheiro/concurrent-problem-sets/assets/101189781/96b98ff2-dc3a-4c6c-b1fe-527ce40c726b
 
 ### Authors
 
